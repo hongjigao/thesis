@@ -1,0 +1,385 @@
+\chapter{Hierarchically Compressed SOS-MP2 Algorithm}
+\label{chap:h2mp2}
+
+In this chapter we describe a hierarchically compressed spin-opposite-scaled
+(SOS-) MP2 algorithm based on the work of Gao, Jiao, and
+Levine~\cite{GaoJiaoLevineH2MP2}. The method combines the atomic-orbital
+(AO) Laplace-transformed formulation of the MP2 energy with an $\mathcal{H}^2$
+representation of the electron repulsion integral (ERI) tensor. The key idea is
+to exploit both the data-sparsity of the ERI tensor in $\mathcal{H}^2$ form and
+the element-wise sparsity of the energy-weighted density and complementary
+density matrices.
+
+Since the AO Laplace MP2 formulation and $\mathcal{H}^2$-matrix basics have
+already been reviewed in previous chapters, we begin directly with the
+methodology. Following the structure of Ref.~\cite{GaoJiaoLevineH2MP2}, we
+first introduce the partitioning of the ERI tensor, then describe the
+short- and long-range index transformations, and finally explain how the
+SOS-MP2 Coulomb-like term is evaluated together with a brief complexity and
+error analysis.
+
+\section{Methodology}
+\label{sec:Methodology}
+Here we describe the key steps in our hierarchical SOS-MP2 algorithm, which leverages both the data-sparsity of the ERI tensor in the $\mathcal{H}^2$ format and the element-wise sparsity of the energy-weighted density matrices. The method involves three main stages: partitioning the ERI tensor, performing index transformations on its short- and long-range components, and finally computing the SOS-MP2 energy. The overall procedure is presented in Algorithm~\ref{alg:HSM algorithm}.
+
+\begingroup
+\renewcommand{\algorithmicrequire}{\textbf{Input:}}
+\renewcommand{\algorithmicensure}{\textbf{Output:}}
+% \begin{algorithm}[H]
+% --- Start of the "framed" algorithm block ---
+\noindent\rule{\linewidth}{0.8pt} % Top rule
+\vspace{-30pt} % Adjust space to bring caption closer to the rule
+\captionof{algorithm}{Hierarchical SOS-MP2 algorithm}
+\label{alg:HSM algorithm}
+\vspace{-15pt} % Adjust space to bring the next rule closer
+\noindent\rule{\linewidth}{0.4pt} % A thinner rule below the caption
+
+\begin{algorithmic}[1]
+\Require The atomic orbital ERI tensor $W$ in $\mathcal{H}^2$ format. The coefficient matrix $C$ and occupied and virtual molecular orbitals $\epsilon_i$. The quadrature weights and abscissa $\{w_{\alpha}, t_{\alpha}\}$
+\Ensure MP2 Coulomb-like term energy $E_2^{\text{SOS-MP2}}$
+\For{$\alpha$ in quadrature points}
+\State Calculate $X_{\mu\nu}^{\alpha} = \sum_{i}^{\text{occ}} C_{\mu i}C_{\nu i} e^{\epsilon_{i} t_{\alpha}}$ and  $Y_{\mu\nu}^{\alpha} = \sum_{a}^{\text{vir}} C_{\mu a} C_{\nu a} e^{-\epsilon_{a} t_{\alpha}}$
+\State Do $X$ and $Y$ index transformations on $W_s$ to get transformed short-range part $T_s$  %row by row
+\For{Block $B_i$ in completely low-rank format}
+\For{Column $\kappa\epsilon$ in the block}
+\For{$\lambda$ where $ X_{\kappa \underline{\lambda}}$ is the truncated significant elements}
+\State Compare the block containing column $\underline{\lambda}\epsilon$ with $B_i$
+\If {They are in the same level}
+\State {Directly multiply the column basis set using \eqref{eq:case1}}
+\ElsIf{the transformed block is of lower level}
+\State{Do ancestor index transformation using \eqref{eq:case2}}
+\Else
+\State{Do descendant index transformation using \eqref{eq:case3}}
+\EndIf
+\EndFor
+\EndFor
+\EndFor
+\State Get the half index transformed low-rank part ERI tensor $(\mu \nu|\underline{\lambda} \epsilon)$
+\State Similarly do $Y$ index transformation to get transformed long-range part $T_l=(\mu \nu|\underline{\lambda} \overline{\sigma})$
+\State Loop over all the elements of $T_s$ to compute $\text{Tr}(T_s^2+2T_s T_l)$.
+\State Loop over all the blocks of $T_l$ to compute $\text{Tr}(T_l^2)$.
+\State Summarize this quadrature point: $e_{2}^{\alpha} = -2 \, \text{Tr}\left[(T_s^2) + (T_l^2) + 2 T_s \cdot T_l\right]$
+\EndFor
+\State \Return $E_2^{\text{SOS-MP2}}=\sum_{\alpha} w_{\alpha}e^{\alpha}_2$
+\end{algorithmic}
+% \end{algorithm}
+% --- The Footer: The final rule ---
+\vspace{-5pt} % Adjust space to bring caption closer to the rule
+\noindent\rule{\linewidth}{0.8pt} % Bottom rule
+% \bigskip % Add some space after the algorithm
+\endgroup
+
+\subsection{Partitioning of the ERI Tensor}
+\label{subsec:Decomposition of The ERI Tensor}
+The SCF procedure involves the multiplication of the ERI tensor by the density matrix, which can be understood as a matrix-vector product in the space of basis function pairs.  Such an operation is well-suited to the $\mathcal{H}^2$-matrix representation. By contrast, the SOS-MP2 method involves operations that resemble a matrix-matrix product, which is less ideal for the direct application of the $\mathcal{H}^2$ format. Nonetheless, for finite systems, the electron density decays exponentially with distance, and insulator-type systems exhibit the fastest decay.\cite{kohn1995density,kohn1996density} As a result, the density and density complementary matrices are expected to be sparse, which allows us to avoid a full, complex matrix-matrix multiplication. Furthermore, substantial cancellations observed in MP2 calculations suggest that accurate results can be achieved by focusing on the dominant elements in one matrix, thereby further simplifying the computation.
+
+In what follows, we assume that the SCF phase of the calculation is complete, and therefore the orbital coefficient matrices, $C$, are already available. With $C$, the energy-weighted density and density complementary matrices, $X$ and $Y$, can be computed as
+\begin{equation}
+X_{\mu\nu}^{\alpha} = \sum_{i}^{\text{occ}} C_{\mu i} C_{\nu i} e^{\epsilon_{i} t_{\alpha}}
+\end{equation}
+and
+\begin{equation}
+\quad Y_{\mu\nu}^{\alpha} = \sum_{a}^{\text{vir}} C_{\mu a} C_{\nu a} e^{-\epsilon_{a} t_{\alpha}}.
+\end{equation}
+Both calculations have a time complexity of $\mathcal{O}(N^3)$. However, these computations are performed only once, and the associated prefactor is sufficiently small that the overall time complexity is negligible for the systems considered in this work.  $X$ and $Y$ are both sparse in larger systems.  We therefore store them in compressed sparse row (CSR) format.  Elements below a user-chosen threshold, $\eta$, are approximated as zero.
+
+As described in Section~\ref{subsec:AO-Laplace MP2}, the Coulomb-like term of the MP2 energy can be expressed as a weighted sum over quadrature points, $E_{2} = -\sum_{\alpha}^{\tau} w_{\alpha} e_{2}^{\alpha}$. For clarity, we focus on the calculation of $e_{2}^{\alpha}$ at a single quadrature point and omit the superscript $\alpha$ in the derivation that follows. In Section~\ref{sec:Results}, we employ the quadrature rules developed by Braess and Hackbusch.\cite{braess2005approximation,takatsuka2008minimax} Typically, seven or eight quadrature points are used.
+
+The Coulomb-like term of the MP2 energy can be written explicitly as
+\begin{equation}
+  e_{2} = -2 \sum_{\mu,\nu,\lambda,\overline{\sigma},\gamma,\delta,\kappa,\epsilon} (\mu \nu | \lambda \sigma) X_{\mu\gamma} Y_{\nu \delta} (\gamma \delta | \kappa \epsilon) X_{\kappa \lambda} Y_{\epsilon \sigma}.
+\end{equation}
+Using $W$ to denote the ERI tensor $(\mu \nu | \lambda \sigma)$, we can express the equation more compactly as
+\begin{equation}
+  e_{2} = -2 \, \text{Tr}\left(\left(W (X \otimes Y)\right)^2\right),
+\end{equation}
+where $\text{Tr}$ denotes the trace and $\otimes$ denotes the Kronecker product. Defining
+\begin{equation}
+T = W (X \otimes Y),
+\end{equation}
+the energy expression simplifies further to
+\begin{equation}
+    e_{2} = -2 \, \text{Tr}(T^2).
+\end{equation}
+
+We refer to the operation of multiplying $W$ by $X \otimes Y$ as \emph{index transformation}. Here, $W$ denotes the original ERI tensor, while $T$ denotes the index-transformed ERI tensor. As discussed in Section~\ref{subsec:H2ERI}, the ERI tensor, represented as an $\mathcal{H}^2$-matrix, can be decomposed into a short-range component, $W_s$, which includes diagonal and near-diagonal blocks, and a long-range component, $W_l$, including the remainder of the matrix. Owing to the linearity of matrix-matrix multiplication,
+\begin{equation}
+    T=T_s+T_l
+\end{equation}
+where
+\begin{equation}
+\label{eq:shortrangeindextransform}
+    T_s = W_s (X \otimes Y)
+\end{equation}
+and
+\begin{equation}
+\label{eq:longrangeindextransform}
+    T_l = W_l (X \otimes Y).
+\end{equation}
+It is important to note that $T_s$ and $T_l$ do not denote the short- and long-range parts of the index-transformed ERI tensor.  Instead, they are the index-transformed versions of the short- and long-range parts of the original ERI tensor. The Coulomb-like term of the MP2 energy then takes the form
+\begin{equation}
+\label{eq:e2}
+e_{2} = -2 \, \text{Tr}\left(T_s^2 + T_l^2 + 2 T_s T_l\right).
+\end{equation}
+
+\subsection{Index Transformation of the Short-Range Component}
+\label{subsec:Index Transformation of the dense part}
+Here we describe the transformation of the short-range component of the ERI tensor, Eq.~\eqref{eq:shortrangeindextransform}.
+Both the original $W_s$ and the ultimate index-transformed $T_s$ are stored in CSR matrix format in order to leverage their sparsity, with elements whose absolute values fall below a second sparsification threshold, $\zeta$, are approximated as zero.
+In practice, the transformation is carried out in two steps, applying $X$ and $Y$ to the ERI tensor separately. First, the $X$ index transformation is computed as
+\begin{equation}
+(\mu \nu | \underline{\lambda} \epsilon) = \sum_\kappa (\mu \nu | \kappa \epsilon) X_{\kappa \underline{\lambda}}.
+\end{equation}
+Following this transformation, the resulting intermediate ERI tensor is sparsified by applying the threshold $\zeta$.
+ The $Y$ index transformation is then performed analogously
+ \begin{equation}
+ (\mu \nu | \underline{\lambda} \overline{\sigma}) = \sum_\epsilon (\mu \nu | \underline{\lambda} \epsilon) Y_{\epsilon \sigma}.
+ \end{equation}
+
+
+
+\subsection{Index Transformation of the Long-Range Component}
+\label{subsec:Index Transformation of the low rank part}
+
+Now we discuss the index transformation of the long-range component, Eq.~\eqref{eq:longrangeindextransform}.
+The long-range part of the ERI, $W_l$, comprises a set of low-rank matrix blocks in an $\mathcal{H}^2$ representation. Since this index transformation applies a right multiplication to $W_l$, the nested property of the row basis sets is preserved, while the nested property in the column basis sets is lost.  Nevertheless, the row basis sets of blocks in the same row of blocks remain connected via transfer matrices.
+
+We begin by converting the $\mathcal{H}^2$ matrix into a more general hierarchical matrix, no longer enforcing the nested property of the column basis.  This is done by retaining the row basis sets and multiplying the intermediate matrices by the column basis sets. This step ensures that the nested property of the row basis sets is maintained across different blocks.
+
+Next, we perform the $X$ index transformation on the hierarchical matrix by evaluating
+\[
+(\mu \nu | \underline{\lambda} \epsilon) = \sum_\kappa (\mu \nu | \kappa \epsilon) X_{\kappa \underline{\lambda}},
+\]
+and store $(\mu \nu | \underline{\lambda} \epsilon)$ in a \emph{completely low-rank hierarchical matrix} format. Such a matrix is partitioned in the same manner as in the original hierarchical matrix.  However, all blocks, including the diagonal and neighboring blocks, are stored in low-rank format. Because right multiplication does not affect the row basis, each block’s row basis set in $(\mu \nu | \underline{\lambda} \epsilon)$ matches that in $(\mu \nu | \kappa \epsilon)$. We then iterate over all blocks in $(\mu \nu | \underline{\lambda} \epsilon)$, including both diagonal and neighboring blocks, to compute their column basis sets. Each column basis represents a basis function pair $\underline{\lambda} \epsilon$. When determining the influence of the row elements, $X_{\kappa \underline{\lambda}}$, on the column basis sets, we consider three cases based on the relationship between the row basis sets:
+
+\begin{description}[leftmargin=0pt, labelwidth=\widthof{\textbf{Descendant Index Transformation}}]
+
+  \item[\textbf{Same-level Index Transformation}] \par
+  The row basis set of the block containing $\kappa \epsilon$ is identical to that of the block containing $\underline{\lambda} \epsilon$.
+
+  \item[\textbf{Ancestor Index Transformation}] \par
+  The row basis set of the block containing $\kappa \epsilon$ is a subset of the row basis set of the block containing $\underline{\lambda} \epsilon$.
+
+  \item[\textbf{Descendant Index Transformation}] \par
+  The row basis set of the block containing $\kappa \epsilon$ is a superset of the row basis set of the block containing $\underline{\lambda} \epsilon$.
+
+\end{description}
+
+Let $y$ denote the column basis vector $\underline{\lambda} \epsilon$ to be computed, and let $x$ denote the column basis set in $\kappa \epsilon$. When the block containing $\kappa \epsilon$ lies in the short-range part, it is treated as an empty block, as this part has already been computed in Section~\ref{subsec:Index Transformation of the dense part}.
+
+In the same-level transformation, we directly multiply the value $X_{\kappa \underline{\lambda}}$ with the column basis vector $x$ to obtain the contribution to $y$, since the row basis sets of both blocks are identical. This can be written as
+\begin{equation}
+  y = X_{\kappa \underline{\lambda}} x.
+  \label{eq:case1}
+\end{equation}
+This step is implemented in line 9 of Algorithm~\ref{alg:HSM algorithm}.
+
+In the ancestor transformation, we trace the sequence of ancestors $n_i$ in the row tree from the block containing $\kappa \epsilon$ to the block containing $\underline{\lambda} \epsilon$. The row basis set of the block containing $\kappa \epsilon$ is effectively the recursive product of the transfer matrices along this ancestor sequence. We express this as
+\begin{equation}
+  y = X_{\kappa \underline{\lambda}} \prod_{i} R_{n_i} x.
+  \label{eq:case2}
+\end{equation}
+   This step is implemented in line 11 of Algorithm~\ref{alg:HSM algorithm}.
+
+In the descendant transformation, the procedure is more involved. First, we identify the blocks containing the required column $\kappa \epsilon$, denoted by a set of blocks, ${B_i}$, with corresponding row basis sets ${U_i}$ and columns ${x_i}$. For each $U_i$, we then trace a sequence of ancestors, $n_{ij}$, in the row tree from the block containing $\underline{\lambda} \epsilon$ down to the block containing $U_i$. This sequence is the reverse of that in the ancestor transformation, moving from descendant to ancestor rather than vice versa. We write
+\begin{equation}
+  y = \sum_{i} X_{\kappa \underline{\lambda}} \prod_{j} R^{-1}_{n_{ij}} x_i,
+  \label{eq:case3}
+\end{equation}
+where $R^{-1}_{n_{ij}}$ denotes the pseudo-inverse of the transfer matrix, which is precomputed.
+
+The $Y$ index transformation step proceeds analogously to the $X$ transformation step. The key difference is that diagonal and neighboring blocks are no longer treated as empty but instead are represented as low-rank matrices sharing the same row basis sets as their neighbors.
+
+ In practice, the error introduced by the long-range index transformation is found to be smaller than that of the short-range transformation, which allows a higher threshold to be used when sparsifying $X$ and $Y$ compared to the threshold used for the short-range part of the index transformation.
+
+\subsection{Computation of MP2 Energy}
+\label{subsec:Computation of MP2 Energy}
+With the CSR matrix, $T_{\text{s}}$, and the completely low-rank hierarchical matrix, $T_{\text{l}}$, representing the short- and long-range components of the index-transformed ERI tensor, the Coulomb-like term of the MP2 energy is given by \eqref{eq:e2}.
+The terms $\text{Tr}(T_{\text{s}}^2)$ and $\text{Tr}(T_{\text{s}} T_{\text{l}})$ are evaluated directly by iterating over all elements of $T_{\text{s}}$ and identifying the corresponding elements in the other matrix to compute their contributions to the total trace.
+
+For the term $\text{Tr}(T_{\text{l}}^2)$, due to the symmetric block structure of the hierarchical matrix, it is sufficient to select each block and compute the trace of the product of the block with its mirror image across the diagonal.
+
+\subsection{\textcolor{black}{Time and Space Complexity}}
+\label{subsec:complexity analysis}
+\textcolor{black}{We analyze costs \emph{per quadrature point}, with the understanding that the number of points $\tau$ is a small constant ($\sim\!7$--$8$) and hence contributes only a constant factor overall. We adopt the following assumptions (standard for insulating finite systems and $\mathcal{H}^2$ compression): (A1) off-diagonal entries of the density and complementary matrices decay exponentially with the distance between basis-function centers;\cite{kohn1995density,kohn1996density} (A2) after thresholding at levels $\eta_s$ and $\eta_l$, the \emph{expected} number of significant entries per row/column of $X$ and $Y$ is $\mathcal{O}(1)$; (A3) the $\mathcal{H}^2$ representation of $W_l$ uses admissible blocks with numerical rank bounded by a geometry-dependent constant $k_{\max}$; (A4) let $m$ be the number of basis-function pairs retained after Schwarz screening ($m \le N^2$), the hierarchical partition over these $m$ pairs has $\mathcal{O}(\log m)$ levels with constant-size leaves; (A5) transfer matrices are well-conditioned so their (pseudo-)inverses are stable and bounded in size; (A6) formation of $X$ and $Y$ is treated as given for the purpose of asymptotic bounds (e.g., produced during or after SCF using standard linear-scaling routines), i.e., it does not dominate the costs reported below.}
+
+\textcolor{black}{\textbf{Short-range index transformation.} A naive dense application of $X$ and $Y$ would be $\mathcal{O}(N^4)$, but by (A2) only $\mathcal{O}(1)$ entries per row/column of $X$ and $Y$ are retained in expectation. Applying these to $W_s$ yields $T_s$ with $\mathcal{O}(m)$ nonzeros and cost $\mathcal{O}(m)$; storage for $T_s$ in CSR is $\mathcal{O}(m)$.}
+
+\textcolor{black}{\textbf{Long-range index transformation.} Converting $W_l$ from $\mathcal{H}^2$ to a general hierarchical form by folding column bases into intermediates costs $\mathcal{O}(m\log m)$. The $X$- and $Y$-steps each require assembling column bases across all levels. By nearsightedness and the level-wise geometry of the trees, the expected number of significant interactions per target is $\mathcal{O}(1)$, while there are $\mathcal{O}(m)$ targets per level and $\mathcal{O}(\log m)$ levels. Hence the total expected work is $\mathcal{O}(m\log m)$ per step; storage for the completely low-rank result is also $\mathcal{O}(m\log m)$. A detailed derivation of this $\mathcal{O}(m\log m)$ bound for the long-range step is provided in the Supplementary Material.}
+
+\textcolor{black}{\textbf{Energy accumulation.} Evaluating $\text{Tr}(T_s^2)$ and $\text{Tr}(2T_s T_l)$ by iterating over the $\mathcal{O}(m)$ nonzeros of $T_s$ costs $\mathcal{O}(m)$. The term $\text{Tr}(T_l^2)$ involves level-wise block products with $\mathcal{O}(m)$ work per level and $\mathcal{O}(\log m)$ levels, i.e., $\mathcal{O}(m\log m)$.} \textcolor{black}{Combining the above, the per-quadrature \emph{work} and \emph{storage} are
+ \begin{equation}
+\#(\text{operations}) = \mathcal{O}(m \log m), \qquad \#(\text{storage}) = \mathcal{O}(m \log m),
+    \label{eq:complexity}
+ \end{equation}
+which implies the worst-case bounds $\mathcal{O}(N^2\log N)$ since $m\le N^2$.}
+
+\subsection{Error Analysis}
+\label{subsec:Error Analysis}
+Now we turn our attention to analyzing the sources of numerical error in our algorithm.  The errors in the index transformation procedure primarily arise from neglecting small elements of $X$ and $Y$ to enable sparse storage. Let $X_{\text{r}}$ and $Y_{\text{r}}$ denote the truncated matrices. The resulting error in $T_{\text{s}}$ comprises the terms
+\begin{equation}
+T_{\text{sX}} = W_{\text{d}} (X_{\text{r}} \otimes Y),
+\end{equation}
+\begin{equation}
+T_{\text{sY}} = W_{\text{d}} (X \otimes Y_{\text{r}}),
+\end{equation}
+and
+\begin{equation}
+T_{\text{sXY}} = W_{\text{d}} (X_{\text{r}} \otimes Y_{\text{r}}),
+\end{equation}
+where subscript $\text{r}$ indicates the residual after sparsification. Analogous considerations apply to $T_{\text{l}}$.
+This error behaves similarly to rounding error and is controlled by the thresholds $\eta$ (for sparsifying $X$/$Y$) and $\zeta$ (for sparsifying the short-range transforms). If $T_{\text{sX}}$ and $T_{\text{sY}}$ are $\mathcal{O}(\epsilon)$, then $T_{\text{sXY}}$ is $\mathcal{O}(\epsilon^2)$ and typically negligible. In principle, one could reduce the net error from $\mathcal{O}(\epsilon)$ to $\mathcal{O}(\epsilon^2)$ by evaluating $\text{Tr}\!\left[T_{\text{s}}(T_{\text{sX}} + T_{\text{sY}})\right]$, \textcolor{black}{which would add only $\mathcal{O}(m)$ work}. However, in our experiments, the observed error is already sufficiently small and comparable to the intrinsic error in $\text{Tr}(T_{\text{s}}^2)$, which cannot be corrected as efficiently, so we omit this step.
+
+Errors from the low-rank approximation and the low-rank index transformation are dominated by the descendant transformation, where pseudo-inverses of transfer matrices are used. With well-conditioned transfer matrices and bounded numerical ranks, this contribution is negligible. The Laplace transformation itself introduces additional numerical error that is well understood and typically much smaller than the MP2 model error.
+
+\subsection{Potential for Parallel Implementation}
+\label{subsec:parallel properties}
+In quantum chemistry, along with physical approximations and efficient numerical methods, parallelization is a key strategy to extend the size and complexity of systems that may be studied.\cite{calvin2021chemrev,bernholdt1996largescale,fletcher1999parallel,hattig2006distributedmemory,ufimtsev2008gpu1,Fales2015,chow2015parallel,werner2015scalable,peng2016tiledarray,kowalski2021nwchemex,hu2024das}  That hierarchical matrices naturally map to massively parallel computer architectures is a significant advantage that will be exploited in future work.  In Laplace transform MP2, the computation of the MP2 energy at each quadrature point is independent, making the algorithm highly parallelizable. Furthermore, each row computation in $T_{\text{s}}$ and each block computation in $T_{\text{l}}$ are also independent, enabling parallelization of the short- and long-range parts of the index transformation, respectively. This same property applies to the MP2 energy computation step. In other words, the Hierarchical SOS-MP2 algorithm could theoretically achieve constant time complexity with an infinite number of processors. However, since parallelization requires considerable memory, we implemented parallelization only for the quadrature points in this proof-of-concept paper. \textcolor{black}{We apply OpenMP with 8 threads on this parallelization because there are usually 7 or 8 number of quadrature points in the Laplace transformation. } Future work will involve parallelizing other parts of the algorithm on massively parallel computers.
+
+\section{Results}
+\label{sec:Results}
+All computations were carried out on the Seawulf cluster %dg-mem node
+at Stony Brook University. We selected two model systems to study: an alkane chain system, which is representative of one-dimensional systems, and a water cluster system, which is representative of fully three-dimensional systems. All SOS-MP2 calculations were performed using the cc-pVDZ basis set. The threshold used for sparsification of both the short-range part of the ERI tensor and the index-transformed ERI tensor was set to $\zeta=1 \times 10^{-6}$.
+
+Different thresholds for sparsification of $X$ and $Y$ are used in the short- and long-range transformations, labeled $\eta_s$ and $\eta_l$, respectively.  Except as noted below, we set the short-range truncation threshold to $\eta_s = 10^{-5}$ for the alkane chain systems and $\eta_s = 3 \times 10^{-4}$ for the water cluster.  For the long-range transformation, thresholds are $\eta_l = 10^{-4}$ for the alkane system and $\eta_l = 3 \times 10^{-4}$ for the water cluster.
+
+\subsection{The Sparsity of Density and Density Complementary Matrices}
+\label{subsec:The sparsity of density and density complementary matrices}
+
+\begin{figure}[htbp]
+    \centering
+    \begin{minipage}[t]{0.48\textwidth}
+        \centering
+        \includegraphics[width=0.94\columnwidth]{figures/xyralk_l.eps}
+        \caption{The number of significant values per row or column in the energy-weighted density matrices in the series of linear alkane chains.}
+        \label{fig:sparsityalkane}
+    \end{minipage}
+    \hfill
+    \begin{minipage}[t]{0.48\textwidth}
+        \centering
+        \includegraphics[width=0.94\columnwidth]{figures/xyrwater_l.eps}
+        \caption{The number of significant values per row or column in the energy-weighted density matrices in the series of water clusters.}
+        \label{fig:sparsitywater}
+    \end{minipage}
+\end{figure}
+
+The performance of our algorithm is contingent on the sparsity of the energy-weighted density matrices $X$ and the density complementary matrices $Y$, thus we quantify that sparsity here.  We report the number of significant elements per row in Figure~\ref{fig:sparsityalkane} for the alkane chain and Figure~\ref{fig:sparsitywater} for the water cluster. Values were computed across all quadrature points, and the maximum value was retained. For the alkane system, we observe rapid growth in the number of significant values from $\mathrm{C}_{10}\mathrm{H}_{32}$ to $\mathrm{C}_{30}\mathrm{H}_{92}$. Beyond this range, growth slows and eventually saturates, consistent with the expected scaling of $\mathcal{O}(N)$ total significant density matrix element for large systems. The water cluster exhibits similar behavior---as the system size increases, the number of significant values per row reaches a plateau. These results confirm the asymptotic sparsity of both the density and complementary matrices in both 1-D and 3-D systems.
+
+\begin{figure}[htbp]
+  \centering
+  \begin{minipage}[t]{0.48\textwidth}
+      \centering
+      \includegraphics[width=0.94\columnwidth]{figures/combinedalktime.png}
+      \caption{The time-to-solution versus number of basis functions for the series of linear alkane chains.}
+      \label{fig:alktime}
+  \end{minipage}
+  \hfill
+  \begin{minipage}[t]{0.48\textwidth}
+      \centering
+      \includegraphics[width=0.94\columnwidth]{figures/combined_wattime.png}
+      \caption{The time-to-solution versus number of basis functions for the series of water clusters.}
+      \label{fig:watertime}
+  \end{minipage}
+\end{figure}
+
+
+\subsection{Time Complexity}
+\label{subsec:Time complexity analysis}
+The measured times-to-solution for a series of linear alkane chains is shown in Figure~\ref{fig:alktime}. All timing results are averaged over three runs. Molecular structures were rendered using Jmol.\cite{Jmol}
+
+The first four data points correspond to systems $\mathrm{C}_{10}\mathrm{H}_{22}$ through $\mathrm{C}_{40}\mathrm{H}_{82}$, in which the $X$ and $Y$ matrices have not yet reached asymptotic sparsity. Beyond this point, the number of nonzero elements per row of $X$ and $Y$ stabilizes. To illustrate the role of sparsity, we include two trend lines. For sufficiently large systems, we expect time complexity to scale as $\mathcal{O}(N^2 \log N)$, though the observed performance is closer to $\mathcal{O}(N^{1.38})$.  The superior performance is likely due to Schwarz screening. For smaller systems, complexity grows more quickly, which is consistent with expectations. The observed $\mathcal{O}(N^{2.38})$ scaling is still better than the theoretical $\mathcal{O}(N^3 \log^2 N)$ bound.  A discontinuity is observed between $\mathrm{C}_{50}\mathrm{H}_{102}$ and $\mathrm{C}_{60}\mathrm{H}_{122}$, corresponding to an increase in the number of levels in the hierarchical tree. Despite this, the increase in time-to-solution remains nearly linear.
+
+Times-to-solution for the water cluster system are shown in Figure~\ref{fig:watertime}. For clusters with 30--50 molecules (first five points), time complexity scales approximately as $\mathcal{O}(N^{2.66})$. For clusters with 50--70 molecules (last five points), scaling improves to $\mathcal{O}(N^{1.83})$. The absolute time cost is higher for the water clusters than for the alkanes, as expected for a 3-D system, in which a larger fraction of the interactions are short range.
+
+It is worth noting that, for the largest water clusters, we modified the hierarchical block-splitting algorithm relative to what was used for smaller clusters and alkane chains. In 3-D systems, the number of interacting block pairs grows rapidly with system size. To mitigate this, we cap the maximum depth of the block tree to control the number of interactions. This change improves performance and preserves the desired asymptotic behavior.
+
+ \textcolor{black}{We also tested different values of $\eta_s$ and $\eta_l$.  We find that the threshold also does not affect the asymptotic growth of the time complexity of the method.}
+
+\begin{figure}[htbp]
+  \centering
+  \begin{minipage}[t]{0.49\textwidth}
+      \centering
+      \includegraphics[width=0.94\columnwidth]{figures/combinedalkmem.png}
+      \caption{The memory versus number of basis functions for the series of linear alkane chains.}
+      \label{fig:alkmem}
+  \end{minipage}
+  \hfill
+  \begin{minipage}[t]{0.49\textwidth}
+      \centering
+      \includegraphics[width=0.94\columnwidth]{figures/combined_watmem.png}
+      \caption{The memory versus number of basis functions for the series of water clusters.}
+      \label{fig:watermem}
+  \end{minipage}
+\end{figure}
+
+\subsection{Space Complexity}
+\label{subsec:Space complexity analysis}
+
+The total memory storage needed for the alkane chain systems is shown in Figure~\ref{fig:alkmem}. Their behavior closely parallels the time complexity results, though the rate of growth is even slower. For systems smaller than $\mathrm{C}_{40}\mathrm{H}_{82}$, where $X$ and $Y$ have not yet reached asymptotic sparsity, storage scales as $\mathcal{O}(N^{1.68})$. For larger systems, the theoretical scaling is $\mathcal{O}(N^2 \log N)$, but observed performance is $\mathcal{O}(N^{1.22})$, approaching linear. As in the time complexity case, we observe a step increase between $\mathrm{C}_{50}\mathrm{H}_{102}$ and $\mathrm{C}_{60}\mathrm{H}_{122}$, again due to an increase in the number of levels in the hierarchical tree.
+
+Figure~\ref{fig:watermem} presents the memory storage for the water clusters. For clusters with 30--50 molecules, the observed scaling is approximately $\mathcal{O}(N^{1.79})$, while storage scales as $\mathcal{O}(N^{1.64})$ for clusters with 50--70 molecules. In contrast to the alkane chain system, this scaling does not flatten substantially with increasing system size, but remains within acceptable bounds and significantly better than the theoretical bound.
+
+We attribute the slowdown in the alkane chain's asymptotic growth to Schwarz screening. In 1-D systems, the number of atoms within a given radius of a particular atom is small, and the majority of atom pairs interact weakly. Schwarz screening is therefore highly effective in eliminating small terms, yielding reduced memory costs. In 3-D systems, more pairs of atoms are close enough to interact strongly, leaving fewer terms that can be ignored. As a result, memory cost does not flatten as dramatically.
+
+\begin{figure}[htbp]
+  \centering
+  \begin{minipage}[t]{0.48\textwidth}
+     \centering
+     \includegraphics[width=0.94\columnwidth]{figures/erroralk.eps}
+     \caption{The error for alkane chain, computed with default thresholds ($\eta_s = 10^{-5}$, $\eta_l = 10^{-4}$) and tighter thresholds ($\eta_s = 10^{-6}$, $\eta_l = 10^{-5}$), are shown in blue and orange, respectively.}
+     \label{fig:err}
+  \end{minipage}
+  \hfill
+  \begin{minipage}[t]{0.48\textwidth}
+     \centering
+     \includegraphics[width=0.94\columnwidth]{figures/errorwt_line.eps}
+     \caption{The error for water cluster using default thresholds.}
+     \label{fig:errwat}
+  \end{minipage}
+\end{figure}
+
+
+\subsection{Energetic Accuracy}
+\label{subsec:Error analysis}
+
+We have carried out error analysis only on small systems. To validate our method, we compute the Coulomb-like component of the MP2 energy using \textsc{Molpro}.\cite{werner2012molpro,werner2020molpro,werner2003fast}  These reference calculations were performed both exactly and with density fitting with default parameters and compared to the results from our hierarchical SOS-MP2 algorithm. Total error in energy relative to exact MP2 as a function of system size is presented for our alkane and water cluster models in Figures~\ref{fig:err} and \ref{fig:errwat}.  The observed error relative to exact MP2 is comparable to that of density fitting (DF), but achieved at significantly lower cost in both time and memory. Interestingly, the error in our results is not observed to grow linearly with system size. The dominant source of error in our implementation is due to thresholding of the $X$ and $Y$ matrices. This error behaves more like numerical rounding error and typically scales as $\mathcal{O}(\sqrt{N})$. Although this introduces some mild and irregular oscillations in the total error, it nonetheless grows more slowly than linearly.
+
+The thresholds used for sparsification of $X$ and $Y$ can be adjusted to improve accuracy. For the time and space complexity studies presented in Sections~\ref{subsec:Space complexity analysis} and~\ref{subsec:Time complexity analysis}, we used the default thresholds listed above, which are already sufficiently small for most practical applications. However, as shown in Figure~\ref{fig:err}, this error can be reduced further by tightening the threshold by a factor of ten ($\eta_s = 10^{-6}$, $\eta_l = 10^{-5}$). Varying the threshold does not affect the qualitative trend in the sparsity growth of the $X$ and $Y$ matrices; instead, it simply shifts the onset of convergence.
+
+For water cluster systems, we performed additional tests on smaller examples and found that the error remained quite small in practice. As illustrated in Figure~\ref{fig:errwat}, the error is notably smaller than that of DF---even though we employed relatively loose truncation thresholds for the $X$ and $Y$ matrices. We attribute this improved accuracy to cancellation effects within the sparsified matrices. Although each individual truncation introduces error, these errors tend to cancel out when summed over the full ERI contraction, resulting in significantly lower total error.
+
+\begin{figure}[htbp]
+  \centering
+     \includegraphics[width=0.94\columnwidth]{figures/threserr.png}
+     \caption{\textcolor{black}{The error and time-to-solution for a water cluster system with 35 water molecules as a function of both thresholds, which are set equal to one another, $\eta_s=\eta_l$.  The grey dashed line indicates the accuracy of DF-MP2 with default parameters.}}
+     \label{fig:thres}
+\end{figure}
+
+Our experiments across multiple systems and threshold values reveal a sharp drop in threshold near $\eta_s=1 \times 10^{-4}$. Beyond that point, the impact of the threshold on the error slows considerably. By choosing a sparsification threshold of $\zeta = 1 \times 10^{-8}$~Hartree for the short-range part of the ERI tensor, and $\eta_s = 1 \times 10^{-8}$ for the $X$ and $Y$ matrices, the total error can be pushed below $1 \times 10^{-5}$~Hartree—comparable to the inherent numerical error of the Laplace transformation itself.  However, in most cases, an error of $1 \times 10^{-4}$~Hartree (roughly 0.06 kcal/mol) is entirely acceptable, especially given that this is far smaller than the intrinsic error of MP2 itself. Accordingly, we opted for a balanced choice of thresholds (detailed in Section~\ref{subsec:The sparsity of density and density complementary matrices}) when plotting and memory costs.  \textcolor{black}{Figure \ref{fig:thres} illustrates how the error and running time behave as a function of threshold ($\eta_s=\eta_l$) for a 35-molecule water cluster. When the threshold is relaxed, the error remains almost unchanged below a certain value, but increases rapidly once this critical point is passed. By contrast, the running time decreases gradually.}
+
+While these empirical findings are promising, we currently lack a complete theoretical understanding of the underlying cancellation behavior. It is possible that some deeper symmetry in the structure of the ERI tensor and the $X$ and $Y$ matrices drives this error suppression. We intend to explore this question further, as it may reveal new opportunities for improved performance and accuracy.
+
+\section{Attempts on the exchange-like terms}
+This part is planned for future work.
+
+\section{Comparison with tensor hyper-contraction}
+\label{sec:ComparisonTHC}
+
+It is instructive to contrast the present $\mathcal{H}^2$-compressed SOS-MP2 formulation with tensor hyper-contraction (THC), particularly least-squares THC (LS-THC) in the AO basis \cite{song2017atomic}. Both approaches ultimately exploit locality, but they do so in conceptually different ways and therefore lead to different computational bottlenecks and tunable approximations. In our algorithm, the central quantity at each Laplace quadrature point is the operator application
+\begin{equation}
+T = W (X \otimes Y),
+\qquad
+e_2^\alpha = -2\,\mathrm{Tr}\!\left[(T_s^\alpha)^2 + (T_l^\alpha)^2 + 2\,T_s^\alpha T_l^\alpha\right],
+\end{equation}
+where $W$ is the AO ERI tensor viewed as a matrix over AO pairs, and efficiency is obtained by (i) representing $W$ as a hierarchically compressed operator, (ii) splitting it into short- and long-range parts $W_s+W_l$, and (iii) applying $W$ to element-sparse, Laplace-weighted density-like objects $X$ and $Y$ using sparse index transformations and hierarchical basis transfers. In other words, we leave the ERIs conceptually intact and accelerate the \emph{action} of the Coulomb operator on structured inputs.
+
+THC, by contrast, replaces the four-index ERIs by an explicit low-order tensor factorization and reorganizes the MP2 contractions around an auxiliary index set. In its canonical form, THC approximates ERIs as
+\begin{equation}
+(pq|rs) \approx \sum_{P,Q} X^{\mathrm{THC}}_{Pp}\,X^{\mathrm{THC}}_{Pq}\; Z_{PQ}\; X^{\mathrm{THC}}_{Qr}\,X^{\mathrm{THC}}_{Qs},
+\label{eq:THCfactor}
+\end{equation}
+so the ``difficulty'' of the four-index object is shifted into the auxiliary core matrix $Z$ and the collocation factors $X^{\mathrm{THC}}$. In LS-THC, $X^{\mathrm{THC}}$ is prescribed on a molecular grid as (weighted) orbital values, and $Z$ is determined by a least-squares fit through a metric on the auxiliary space. When implemented in the AO basis, the practical advantage is that $X^{\mathrm{THC}}$ can be made sparse due to the locality of atom-centered Gaussian functions, and one can screen small collocation values using a user threshold (often denoted $X_{\mathrm{thre}}$). This moves much of the remaining work into matrix multiplications over the auxiliary indices, which is highly compatible with GPU-accelerated linear algebra.
+
+This difference in viewpoint leads to a different cost profile. In our $\mathcal{H}^2$ approach, the dominant operations are the repeated sparse index transformations through $W_s$ and the hierarchical long-range transformations through $W_l$, followed by trace accumulation using the split $T=T_s+T_l$. In AO-THC/LS-THC, the \emph{energy} evaluation can be organized to be low-scaling once $X^{\mathrm{THC}}$ and $Z$ are available, but the precomputation of $Z$ introduces an additional global step: forming and (pseudo-)inverting an auxiliary-space metric (and, in practice, applying eigenvalue truncation for stability). Thus, compared to our method—which controls accuracy primarily through hierarchical low-rank truncations in $W_l$ and sparsification thresholds for $X$, $Y$, and intermediates—THC controls accuracy primarily through the quality/size of the auxiliary grid and the numerical stabilization choices made in constructing $Z$.
+
+Finally, the two methods favor different implementation styles. The present algorithm is naturally expressed as a sequence of operator applications and tree-based traversals with irregular sparsity patterns, which maps well onto CPUs and task-based parallelism and benefits from the separability of quadrature points and hierarchical blocks. THC intentionally reorganizes work into BLAS-like contractions (sparse--dense and dense--dense) over auxiliary indices, which is particularly attractive on GPUs, at the expense of additional preprocessing and storage associated with the auxiliary representation. These distinctions clarify that the two approaches are not merely notational variants: THC changes the representation of the ERIs via a fitted factorization \eqref{eq:THCfactor}, whereas our method changes the way ERIs are \emph{applied} by combining hierarchical operator compression with double sparsity in the Laplace-weighted density objects.

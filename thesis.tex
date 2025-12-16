@@ -1,0 +1,128 @@
+\documentclass[phd,bottom,nosig]{usbthesis}
+
+\usepackage{mathtools}
+\usepackage{amssymb}
+\usepackage{amsfonts}
+\usepackage{amsthm}
+\usepackage{bm}
+
+
+\usepackage{graphicx}
+\usepackage{float}
+%\usepackage{tikz}
+\usepackage{array}
+\usepackage{tabularx}
+\usepackage{multirow}
+\usepackage{hhline}
+
+% 算法环境
+\usepackage{algorithm}
+\usepackage{algpseudocode}
+
+% 文本与布局
+\usepackage{setspace}
+\usepackage{afterpage}
+\usepackage{footmisc}
+\usepackage{xspace}
+\usepackage{enumitem}
+\usepackage{comment}
+
+% 引文
+\usepackage[numbers,sort&compress]{natbib}
+
+% 颜色与 caption
+\usepackage{xcolor}
+\usepackage{caption}
+\usepackage{subcaption}
+
+% 其他
+\usepackage{pdfpages}
+%\usepackage{silence}
+%\WarningFilter{revtex4-1}{Repair the float}
+
+% 超链接放最后
+\usepackage{hyperref}
+\hypersetup{
+    colorlinks=true,
+    linkcolor=blue,
+    filecolor=magenta,
+    urlcolor=cyan,
+    citecolor=blue
+}
+
+\renewcommand{\thesubsection}{\thesection.\arabic{subsection}}
+\makeatletter
+\renewcommand{\p@subsection}{}
+\makeatother
+
+\newtheorem{definition}{Definition}
+\newtheorem{lemma}{Lemma}
+\newtheorem{proposition}{Proposition}
+\newtheorem{theorem}{Theorem}
+
+%\usepackage[nottoc]{tocbibind}
+\input{mathdefs}
+\input{callcommands}
+\hyphenation{put words here which LaTeX does not hy-phen-ate pro-per-ly}
+
+\author{Hongji Gao}%
+\title{Asymptotic-Behavior–Driven Algorithm Design and Discrimination: From Scalable Computation to Convergence Metrics}%
+
+\month{December}
+\year{2025}%
+\program{Applied Mathematics and Statistics}%
+\director{Xiangmin Jiao}{Professor, Department of Applied Mathematics and Statistics}%
+%\chairman{Name of Chairman}{Professor, Department of Physics and Astronomy}%
+\chairman{Robert~Harrison}{Professor,  Institute for Advanced Computational Scinece}%
+%\fstmember{Name of Member}{Professor, Department of Physics and Astronomy}%
+\fstmember{Benjamin~Levine}{Professor, Department of Chemistry}%
+%\outmember{Name of Outside Member}{Position}{Institution}%
+\outmember{Name of Outside Member}{Position}{Institution}%
+\dean{Eric Wertheimer}%
+
+\begin{document}
+
+\singlespacing %
+\pagenumbering{roman} %
+\maketitle %
+\makeapproval %
+
+\begin{abstract}
+\input{sections/abstract}
+\end{abstract}
+\tableofcontents %
+\listoffigures %
+%
+%\listoftables %
+%
+\begin{acknowledgements}
+    \input{sections/acknowledgements}
+\end{acknowledgements}
+\pagestyle{thesis}
+\newpage
+\pagenumbering{arabic}
+\include{sections/chapterIntroduction}
+\include{sections/chapterPreliminary}
+\include{sections/chapterCHACI}
+\include{sections/chapterSOSMP2}
+\include{sections/chapterPconvergence}
+\include{sections/chapterConclusion}
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\bibliographystyle{unsrtnat}
+\renewcommand{\baselinestretch}{1}
+\normalsize
+
+\clearpage
+\newpage
+\phantomsection%
+\addcontentsline{toc}{chapter}{\numberline{}{Bibliography}}%
+\bibliography{refs}
+
+\clearpage
+\newpage
+
+\appendix
+%\include{sections/appendixSdkr}
+%\include{sections/appendixNOON}
+
+\end{document}
