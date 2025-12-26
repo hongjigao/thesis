@@ -3,7 +3,7 @@
 
 In this chapter we summarize the main ideas and results of the corner
 hierarchically approximated configuration interaction (CHACI) approach for
-wave function compression, based on Berard \emph{et al.}~\cite{BerardCH2024}.
+wave function compression, based on our CHACI paper \emph{et al.}~\cite{BerardCH2024}.
 CHACI combines the tensor structure of full configuration interaction (FCI)
 wave functions with a corner hierarchical (CH) matrix format to obtain
 efficient and scalable compression of strongly correlated wave functions.
@@ -46,6 +46,15 @@ $\beta$-string indices. Arranging $C_{I_\alpha I_\beta}$ into a matrix
 \end{equation}
 we obtain the \emph{CI matrix} representation of the FCI tensor.
 
+% --- the TikZ tree as its own standalone figure ---
+\begin{figure}[htbp]
+    \centering
+    % if you converted to EPS for latex->dvips, use .eps here
+    \includegraphics[width=0.70\columnwidth]{figures/tikz.eps}
+    \caption{Left-biased binary tree used by CHACI corner-hierarchical compression: only the left child is further subdivided, while the right child becomes a leaf at each level.}
+    \label{fig:chaci-tree}
+\end{figure}
+
 For strongly correlated systems such as acenes, numerical evidence shows that
 the largest CI coefficients can be concentrated into a relatively small
 sub-block of $\mathbf{C}$ after a suitable reordering of rows and columns (e.g., sorting by row/column norms or natural-orbital occupation). We observe that after sorting, the important coefficients
@@ -59,6 +68,8 @@ unsorted CI matrix, significant coefficients are scattered. After sorting, the
 density of large entries is strongly localized in the upper-left corner,
 suggesting a natural focus region for refinement and a surrounding region that
 can be approximated more aggressively.
+
+Therefore, we adopt the \emph{corner-hierarchical matrix} construction, a specialized variant of hierarchical matrices designed to exploit such corner-dominant structure. Rather than refining blocks along a diagonal band, the corner-hierarchical approach recursively subdivides only the corner region containing the dominant coefficients, while treating the complementary part as a leaf that can be compressed more aggressively. This refinement strategy is naturally encoded by the left-biased cluster tree shown in Figure~\ref{fig:chaci-tree}, where at each level only the left child is further expanded and the right child terminates as a leaf.
 
 \begin{figure}[htbp]
     \centering
@@ -77,6 +88,7 @@ blocks away from the diagonal are approximately low rank. The block structure
 for a typical H-matrix is sketched in
 Figure~\ref{fig:hierarchical-matrix}: near-diagonal blocks (gray) are kept dense,
 while far-field blocks (white) are represented in low-rank form.
+
 \begin{figure}[htbp]
     \centering
     \begin{minipage}[t]{0.48\textwidth}
@@ -93,11 +105,13 @@ while far-field blocks (white) are represented in low-rank form.
         \label{fig:corner-hierarchical}
     \end{minipage}
 \end{figure}
+
+
+
 For CI matrices with corner dominance in Figure~\ref{fig:corner-hierarchical}, however, the strongest coefficients
 are not aligned along a diagonal. Instead, they cluster in an upper-left
 corner whose boundary does not generally coincide with a diagonal band.
 Applying a standard H-matrix blocking to such a matrix leads to:
-
 \begin{itemize}
   \item many near-diagonal blocks that contain mostly small coefficients
         and are therefore inefficiently stored as dense blocks;
@@ -106,46 +120,12 @@ Applying a standard H-matrix blocking to such a matrix leads to:
         relevant information without increasing rank.
 \end{itemize}
 
+In contrast, CHACI adopts a \emph{corner-driven} recursive subdivision, which can be naturally represented by the left-biased binary tree in Figure~\ref{fig:chaci-tree}. At each refinement step, the upper-left (corner) sub-block is further split (left child), whereas the complementary region is accepted as a leaf block (right child) and compressed adaptively.
+
 Numerical experiments in Ref.~\cite{BerardCH2024} confirm that H-matrix
 compression of CI matrices is significantly less efficient than the corner
 hierarchical approach described below.
 
-\subsection{Corner hierarchical (CH) matrix format}
-\label{subsec:ch-matrix-format}
-
-To better exploit corner dominance, we introduce the
-\emph{corner hierarchical} (CH) matrix format~\cite{BerardCH2024}. The key
-idea is to refine the upper-left corner of the matrix hierarchically, rather than a diagonal band. A CH matrix is constructed as follows:
-
-\begin{enumerate}
-  \item Start from the full $M_\alpha \times M_\beta$ CI matrix
-        $\mathbf{C}$ (after sorting).
-  \item Recursively split the current block into four subblocks:
-        upper-left, upper-right, lower-left, and lower-right.
-  \item Refine (subdivide) only the \emph{upper-left} subblock at each level.
-        The other three blocks are treated as candidate blocks for dense
-        or low-rank approximation.
-  \item Repeat this for $p$ levels. At the end, there is one fully refined
-        upper-left block and $3^p$ other blocks of varying sizes.
-\end{enumerate}
-
-
-
-This CH structure is tailored to the observed pattern of CI coefficients:
-
-\begin{itemize}
-  \item The upper-left corner contains the most important determinants and is
-        kept in relatively high resolution (smaller blocks, possibly dense).
-  \item As we move away from the corner, blocks contain progressively less
-        important coefficients and can be stored in compressed form (blockwise
-        truncated SVD) or dropped entirely.
-\end{itemize}
-
-Because the CH blocking follows the physical structure of the CI matrix, it
-allows CHACI to achieve much higher compression ratios than global TSVD or
-H-matrix compression at the same accuracy.
-
-% ============================================================
 \section{The CHACI Algorithm}
 \label{sec:chaci-algorithm}
 
@@ -351,7 +331,7 @@ We start by comparing the performance of CHACI compression to TSVD compression f
     \label{fig:energy-spin-errors-14-14}
 \end{figure}
 
-Figures~\ref{fig:energy-spin-errors-14-14}a and b present errors in the singlet and triplet absolute energies, respectively. Again, the performance of CHACI is far superior to TSVD, especially in the small-storage regime, where the TSVD errors are a substantial fraction of an eV. Figure~\ref{fig:energy-spin-errors-14-14}c and d present spin error. Here CHACI again outperforms TSVD. Even with very modest (28 kdoubles) storage, the error in \(\langle S^{2} \rangle\) is 0.02, and the error drops rapidly toward zero with additional storage. In contrast, TSVD spin errors for the singlet case do not drop below 0.02 until nearly 400 kdoubles are stored.
+Figures~\ref{fig:energy-spin-errors-14-14} a and b present errors in the singlet and triplet absolute energies, respectively. Again, the performance of CHACI is far superior to TSVD, especially in the small-storage regime, where the TSVD errors are a substantial fraction of an eV. Figure~\ref{fig:energy-spin-errors-14-14}c and d present spin error. Here CHACI again outperforms TSVD. Even with very modest (28 kdoubles) storage, the error in \(\langle S^{2} \rangle\) is 0.02, and the error drops rapidly toward zero with additional storage. In contrast, TSVD spin errors for the singlet case do not drop below 0.02 until nearly 400 kdoubles are stored.
 
 {
 \begin{figure}[htbp]

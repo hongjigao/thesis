@@ -1,5 +1,61 @@
-\chapter{Conclusion}
-bla
-\section{Part 1}
+\chapter{Conclusion and Future Work}\label{chap:conclusion}
 
-blabla
+We investigated how hierarchical matrix ideas can be converted into concrete computational advantages for post--Hartree--Fock electronic structure methods. Focusing on two representative bottlenecks---(i) the wavefunction coefficient objects arising in configuration interaction (CI/FCI) and (ii) the electron--repulsion integral (ERI) tensor that dominates perturbative correlation---we showed that many chemically relevant tensors live in a common regime: they are neither strictly sparse (so naive truncation can destroy subtle cancellations) nor worth treating as fully dense (due to prohibitive memory traffic and bandwidth limitations). Hierarchical compression provides an accuracy-controllable middle ground that exploits heterogeneous structure, reduces storage and data movement, and improves practical scalability.
+
+Across both case studies, the strongest results were obtained when the hierarchical representation was matched to the dominant structure of the target object. For CI coefficient matrices, the relevant structure is \emph{information locality} that becomes corner-dominant under appropriate reordering. For ERIs, the key structure is \emph{geometric locality} that induces far-field low-rank interactions. These results indicate that hierarchical approaches are not only theoretically elegant, but also practically productive for computational chemistry, and therefore represent a promising research direction with substantial room for future progress.
+
+\section{Summary of contributions}\label{sec:conclusion_summary}
+
+\subsection{Corner-hierarchical compression for CI/FCI tensors (CHACI)}\label{subsec:conclusion_chaci}
+
+For CI wavefunctions folded into an $\alpha$--$\beta$ string matrix, we observed that after a suitable reordering a relatively small principal corner can carry a disproportionately large fraction of the wavefunction weight. This motivates a hierarchical format that refines the corner rather than the diagonal, leading to a representation better aligned with the empirical ``information geometry'' of CI coefficients.
+
+Based on this observation, we developed \textsc{CHACI}, which combines:
+\begin{itemize}
+\item a corner-hierarchical partitioning strategy,
+\item row/column sorting by norms to intensify corner concentration,
+\item blockwise adaptive rank selection guided by an information-density criterion, and
+\item blockwise normalization to stabilize the distribution of probability mass across blocks.
+\end{itemize}
+
+Numerically, \textsc{CHACI} demonstrated a substantially improved accuracy--storage trade-off relative to global truncated SVD (TSVD) and to standard diagonal-centric hierarchical blocking. For the 12-acene test cases, \textsc{CHACI} achieved chemically meaningful accuracy at storage levels far below dense storage. For example, in the $14$--$14$ active space, \textsc{CHACI} maintained singlet--triplet gap errors below $\sim 0.07$~eV at a storage level of $\sim 28$~kdoubles, compared to $\sim 11{,}778$~kdoubles for dense storage, while TSVD required much larger storage to reach comparable accuracy. Similar advantages persisted and became more pronounced in the larger $16$--$16$ active space, where \textsc{CHACI} sustained $\lesssim 0.1$~eV gap errors with $\sim 59$~kdoubles versus $\sim 165{,}637$~kdoubles for dense storage. Beyond single-point energies, \textsc{CHACI} preserved qualitative physical behavior (e.g., smooth potential-energy surfaces and consistent spin trends) over a wide range of compression levels, supporting its utility as more than a post-processing tool.
+
+\subsection{Hierarchically compressed AO-SOS-MP2 algorithm}\label{subsec:conclusion_mp2}
+
+For MP2, the dominant computational obstacle is the repeated use and transformation of the ERI tensor. We formulated an AO-Laplace trace form for the opposite-spin (Coulomb-like) contribution and developed a hierarchical SOS-MP2 algorithm that combines:
+\begin{itemize}
+\item an $\mathbf{H^2}$ representation of the reshaped ERI operator,
+\item a short-/long-range split $(W_s + W_\ell)$ aligned with near-/far-field structure, and
+\item sparse treatment of energy-weighted density-like matrices arising from the Laplace quadrature.
+\end{itemize}
+This pipeline replaces dense four-index contractions by hierarchical operator application plus sparse index transformations and trace accumulation.
+
+Under standard decay and bounded-rank assumptions, the method achieves $O(N^2 \log N)$ time and space complexity in terms of the number of basis functions $N$, and in finite molecular systems the empirical scaling can be even more favorable due to screening. In numerical studies on linear alkanes and three-dimensional water clusters, the observed growth of time-to-solution and memory remained far below the canonical $O(N^5)$/$O(N^4)$ behavior of conventional MP2. Energetically, the Coulomb-like term errors relative to exact MP2 were comparable to density fitting at substantially reduced cost, and the accuracy could be systematically tightened by lowering sparsification thresholds.
+
+\section{Implications for computational chemistry}\label{sec:conclusion_implications}
+
+Taken together, the above results support the broader conclusion that hierarchical matrix ideas form a flexible and effective language for encoding the heterogeneous structure that pervades electronic structure tensors. Rather than applying a single ``one-size-fits-all'' template, the key is to design \emph{problem-aware} hierarchies, reorderings, and error controls that expose the dominant compressibility mechanism of each object.
+
+At the same time, the current methods remain at an early stage with respect to end-to-end integration and generality. In \textsc{CHACI}, the strongest compression is currently obtained after an \emph{a posteriori} sorting step that assumes access to the full CI vector, whereas the long-term objective is to avoid forming or storing the dense object entirely. In the SOS-MP2 setting, the Coulomb-like term is a clean first target, but fully practical MP2 variants also require robust handling of exchange-like contributions and a complete parallel implementation strategy that preserves the benefits of hierarchical data movement on modern hardware. Addressing these limitations is essential for hierarchical techniques to become drop-in components of production-quality electronic structure codes.
+
+\section{Future work}\label{sec:conclusion_future_work}
+
+\subsection{FCI tensor / CI wavefunction compression}\label{subsec:future_fci}
+
+A central limitation of the current \textsc{CHACI} workflow is that the row/column sorting step is performed \emph{a posteriori}, after the dense CI vector (or CI matrix) is available. A key next step is therefore to design an \emph{a priori} row/column sorting algorithm that predicts a ``compression-friendly'' ordering of $\alpha$- and $\beta$-strings \emph{before} the CI coefficients are fully computed. Promising directions include using inexpensive surrogate indicators---for example excitation-level heuristics, approximate amplitudes from cheaper solvers, orbital occupation patterns, or localized entanglement proxies---to estimate row/column importance and thus construct a deterministic ordering that induces corner dominance from the outset.
+
+Beyond ordering, a more ambitious objective is to eliminate the requirement of generating the full CI vector altogether. Instead, the solver should directly construct and update a \emph{corner-hierarchically formed} CI object, i.e., generate the corner-hierarchical blocks (dense blocks and TSVD factors) ``in place'' and only at the resolution demanded by the information-density criterion. Achieving this would substantially reduce peak memory footprint (since the dense vector/matrix never materializes) and improve time-to-solution by avoiding global passes over negligible coefficients. 
+
+\subsection{Hierarchically accelerated MP2}\label{subsec:future_mp2}
+
+For the MP2 component, two immediate directions are particularly important.
+
+\paragraph{Full parallel implementation.}
+While the Laplace quadrature points provide an embarrassingly parallel outer loop, a complete high-performance realization requires a fully parallel algorithm beyond quadrature-level parallelism. Promising avenues include parallelizing: (i) the sparse short-range index transformations in a row-wise or block-wise manner, (ii) the long-range hierarchical traversals and block operations using task-based scheduling, and (iii) the trace accumulation across tree levels. Achieving strong scaling will require careful load balancing, but hierarchical formats also offer natural multi-level partitions that are well suited to distributed-memory execution.
+
+\paragraph{Understanding and treating exchange integrals.}
+A practical MP2 implementation must address the exchange integral (exchange-like) contributions in a way that retains the favorable scaling and accuracy control observed for the Coulomb-like SOS term. Exchange-like terms are more delicate due to antisymmetry and a different contraction structure, yet they may still exhibit exploitable locality and compressibility when expressed in appropriate pair spaces or with modified near-/far-field splits. Developing a clear theoretical and algorithmic understanding of the exchange component---including hierarchical admissibility, rank behavior, and error propagation under sparsification---will be crucial for extending the present framework toward full MP2 and, potentially, toward higher-order perturbative methods and coupled-cluster-like intermediates.
+
+\subsection{Hierarchical computational methods for CCSD}\label{subsec:future_ccsd}
+
+We are also exploring hierarchical computational ideas for coupled-cluster singles and doubles (CCSD). CCSD determines the cluster amplitudes in an exponential ansatz, and in its canonical formulation its dominant steps are large tensor contractions that repeatedly couple doubles amplitudes with the two-electron repulsion integrals (ERIs) (or ERI-derived intermediates) \cite{Psi4CCManual,BartlettMusial2007}. Since the ERI tensor is a principal source of both arithmetic intensity and memory traffic in CCSD, it is a natural target for compression: if ERIs (and selected intermediates) can be represented in an error-controlled compressed format, then CCSD amplitude updates can be re-expressed as operations on compressed blocks rather than dense four-index objects \cite{Dutta2018CCSDERIApprox,Hohenstein2022RRCC_THC}. Our long-term goal is therefore to design CCSD contraction pathways that directly consume a hierarchical (e.g., $\mathcal{H}$/$\mathcal{H}^2$-type) ERI representation, preserving convergence and chemical accuracy while reducing storage and data movement.

@@ -10,13 +10,142 @@ to exploit both the data-sparsity of the ERI tensor in $\mathcal{H}^2$ form and
 the element-wise sparsity of the energy-weighted density and complementary
 density matrices.
 
-Since the AO Laplace MP2 formulation and $\mathcal{H}^2$-matrix basics have
-already been reviewed in previous chapters, we begin directly with the
-methodology. Following the structure of Ref.~\cite{GaoJiaoLevineH2MP2}, we
-first introduce the partitioning of the ERI tensor, then describe the
-short- and long-range index transformations, and finally explain how the
-SOS-MP2 Coulomb-like term is evaluated together with a brief complexity and
-error analysis.
+\section{From closed-shell MP2 to the AO--Laplace trace form}
+\label{sec:AOLaplaceMP2_trace}
+
+We outline the algebraic steps that lead from the conventional closed-shell MP2
+energy expression to an AO--Laplace formulation that can be evaluated via
+trace contractions. This derivation provides the analytic target that the
+hierarchical algorithm in Algorithm~\ref{alg:HSM algorithm} accelerates.
+
+\paragraph{Closed-shell MP2 energy.}
+In canonical molecular orbitals (MOs), the closed-shell MP2 correlation energy
+may be written as
+\begin{equation}
+E_{\mathrm{MP2}}
+=
+-\sum_{ij}^{\mathrm{occ}}\sum_{ab}^{\mathrm{vir}}
+\frac{(ia|jb)\,\bigl[2(ia|jb)-(ib|ja)\bigr]}
+{\epsilon_a+\epsilon_b-\epsilon_i-\epsilon_j},
+\label{eq:mp2_closed_shell}
+\end{equation}
+where \((pq|rs)\) are two-electron repulsion integrals (ERIs) in chemists'
+notation and \(\Delta_{ij}^{ab}=\epsilon_a+\epsilon_b-\epsilon_i-\epsilon_j>0\)
+denotes the orbital energy gap.
+
+\paragraph{Laplace transform and quadrature.}
+Using the Laplace identity \(1/\Delta=\int_0^\infty e^{-\Delta t}\,dt\) and a
+quadrature approximation with \(\{t_\alpha,w_\alpha\}_{\alpha=1}^{n_q}\), we obtain
+\begin{equation}
+E_{\mathrm{MP2}}
+\approx
+\sum_{\alpha=1}^{n_q} w_\alpha\, e_2^\alpha,
+\qquad
+e_2^\alpha
+=
+-\sum_{ijab}
+(ia|jb)\,\bigl[2(ia|jb)-(ib|ja)\bigr]\,
+e^{-\Delta_{ij}^{ab}t_\alpha}.
+\label{eq:mp2_laplace_quadrature}
+\end{equation}
+Since \(e^{-\Delta_{ij}^{ab}t_\alpha}
+=
+e^{+\epsilon_it_\alpha}e^{+\epsilon_jt_\alpha}e^{-\epsilon_at_\alpha}e^{-\epsilon_bt_\alpha}\),
+we define at each quadrature point \(\alpha\) the energy-weighted density and
+complementary density matrices in the AO basis,
+\begin{align}
+X_{\mu\nu}^{\alpha}
+&=
+\sum_{i}^{\mathrm{occ}} C_{\mu i}C_{\nu i}\,e^{+\epsilon_i t_\alpha},
+\label{eq:X_def_trace}
+\\
+Y_{\mu\nu}^{\alpha}
+&=
+\sum_{a}^{\mathrm{vir}} C_{\mu a}C_{\nu a}\,e^{-\epsilon_a t_\alpha},
+\label{eq:Y_def_trace}
+\end{align}
+where \(C\) denotes the MO coefficient matrix.
+
+\paragraph{AO formulation via index-transformed ERIs.}
+Let \(W\) denote the AO ERI tensor \(W_{\mu\nu\lambda\sigma}\equiv(\mu\nu|\lambda\sigma)\).
+After applying the Laplace transform and quadrature, the MP2 energy becomes a weighted sum over quadrature points. In the remainder of this section we fix \emph{one} quadrature point and, for notational simplicity, drop the quadrature index \(\alpha\) on all quantities (i.e., \(X\equiv X^\alpha\), \(Y\equiv Y^\alpha\), etc.).
+
+At the chosen quadrature point, the Laplace factors are absorbed into the energy-weighted density matrix \(X\) and complementary density matrix \(Y\) (Eq. ~\eqref{eq:X_def_trace}--\eqref{eq:Y_def_trace}). In the notation used
+throughout this chapter and in Algorithm~\ref{alg:HSM algorithm}, we perform two
+successive \emph{ket-side} index transformations:
+\begin{align}
+(\mu\nu|\underline{\lambda}\epsilon)
+&\equiv
+\sum_{\kappa}(\mu\nu|\kappa\epsilon)\,X_{\kappa\lambda},
+\label{eq:half_transform_unified}
+\\
+(\mu\nu|\underline{\lambda}\overline{\sigma})
+&\equiv
+\sum_{\epsilon}(\mu\nu|\underline{\lambda}\epsilon)\,Y_{\epsilon\sigma}.
+\label{eq:full_transform_unified}
+\end{align}
+Here \(\underline{\lambda}\) and \(\overline{\sigma}\) indicate transformed (and, in
+practice, threshold-truncated) indices induced by \(X\) and \(Y\), respectively.
+
+Define the Kronecker product
+\begin{equation}
+Z \equiv X\otimes Y,
+\label{eq:Z_def_unified}
+\end{equation}
+which acts on the \emph{column} (ket) pair index \((\lambda\sigma)\), and the one-sided
+index-transformed ERI matrix
+\begin{equation}
+T \equiv W Z,
+\qquad
+T_{(\mu\nu),(\lambda\sigma)} \equiv (\mu\nu|\underline{\lambda}\overline{\sigma}).
+\label{eq:T_def_unified}
+\end{equation}
+The fully index transformed ERI matrix is then expressed as
+\begin{equation}
+Q \equiv Z W Z.
+\label{eq:Q_def_unified}
+\end{equation}
+
+With these definitions, the MP2 contribution can be written as two
+trace contractions: a Coulomb contraction with \(W\) and an exchange contraction with a
+permuted ERI matrix \(V\) whose entries are \(V_{(\mu\nu),(\lambda\sigma)}=(\mu\sigma|\lambda\nu)\),
+i.e., \(V=\Pi(W)\) for a fixed permutation \(\Pi\) on pair indices,
+\begin{equation}
+e_2
+=
+-2\,\mathrm{Tr}(Q W)
+\;+\;
+\mathrm{Tr}(Q V).
+\label{eq:e2_trace_two_terms_unified}
+\end{equation}
+We will later treat the Coulomb-like and exchange-like parts separately.
+In the present work, we focus on the \emph{Coulomb} contraction
+\(-2\,\mathrm{Tr}(Q W)\), because it admits a particularly efficient evaluation
+and directly yields the term used in SOS-MP2.
+
+By cyclicity of the trace we obtain the trace-of-square identity
+\begin{equation}
+\mathrm{Tr}(Q W)
+=
+\mathrm{Tr}(Z W Z W)
+=
+\mathrm{Tr}\!\left[(W Z)^2\right]
+=
+\mathrm{Tr}\!\left[T^2\right],
+\label{eq:trace_square_unified}
+\end{equation}
+and therefore the Coulomb contribution at this quadrature point can be written as
+\begin{equation}
+e_J
+\equiv
+-2\,\mathrm{Tr}(Q W)
+=
+-2\,\mathrm{Tr}\!\left[T^2\right].
+\label{eq:eJ_trace_square_unified}
+\end{equation}
+
+In summary, the AO--Laplace formulation converts the Coulomb integral MP2 energy into a small number of trace contractions per quadrature point. The hierarchical method developed in this chapter is designed to accelerate the construction of \(T\) and the evaluation of \(\mathrm{Tr}\!\left[T^2\right]\)
+(and, when desired, the analogous permuted contraction involving \(V\)).
 
 \section{Methodology}
 \label{sec:Methodology}
@@ -73,36 +202,22 @@ Here we describe the key steps in our hierarchical SOS-MP2 algorithm, which leve
 \label{subsec:Decomposition of The ERI Tensor}
 The SCF procedure involves the multiplication of the ERI tensor by the density matrix, which can be understood as a matrix-vector product in the space of basis function pairs.  Such an operation is well-suited to the $\mathcal{H}^2$-matrix representation. By contrast, the SOS-MP2 method involves operations that resemble a matrix-matrix product, which is less ideal for the direct application of the $\mathcal{H}^2$ format. Nonetheless, for finite systems, the electron density decays exponentially with distance, and insulator-type systems exhibit the fastest decay.\cite{kohn1995density,kohn1996density} As a result, the density and density complementary matrices are expected to be sparse, which allows us to avoid a full, complex matrix-matrix multiplication. Furthermore, substantial cancellations observed in MP2 calculations suggest that accurate results can be achieved by focusing on the dominant elements in one matrix, thereby further simplifying the computation.
 
-In what follows, we assume that the SCF phase of the calculation is complete, and therefore the orbital coefficient matrices, $C$, are already available. With $C$, the energy-weighted density and density complementary matrices, $X$ and $Y$, can be computed as
-\begin{equation}
-X_{\mu\nu}^{\alpha} = \sum_{i}^{\text{occ}} C_{\mu i} C_{\nu i} e^{\epsilon_{i} t_{\alpha}}
-\end{equation}
-and
-\begin{equation}
-\quad Y_{\mu\nu}^{\alpha} = \sum_{a}^{\text{vir}} C_{\mu a} C_{\nu a} e^{-\epsilon_{a} t_{\alpha}}.
-\end{equation}
+In what follows, we assume that the SCF phase of the calculation is complete, and therefore the orbital coefficient matrices, $C$, are already available. With $C$, the energy-weighted density and density complementary matrices, $X$ and $Y$, computed using Eqs.~\eqref{eq:X_def_trace} and \eqref{eq:Y_def_trace}, can be formed directly.
 Both calculations have a time complexity of $\mathcal{O}(N^3)$. However, these computations are performed only once, and the associated prefactor is sufficiently small that the overall time complexity is negligible for the systems considered in this work.  $X$ and $Y$ are both sparse in larger systems.  We therefore store them in compressed sparse row (CSR) format.  Elements below a user-chosen threshold, $\eta$, are approximated as zero.
 
-As described in Section~\ref{subsec:AO-Laplace MP2}, the Coulomb-like term of the MP2 energy can be expressed as a weighted sum over quadrature points, $E_{2} = -\sum_{\alpha}^{\tau} w_{\alpha} e_{2}^{\alpha}$. For clarity, we focus on the calculation of $e_{2}^{\alpha}$ at a single quadrature point and omit the superscript $\alpha$ in the derivation that follows. In Section~\ref{sec:Results}, we employ the quadrature rules developed by Braess and Hackbusch.\cite{braess2005approximation,takatsuka2008minimax} Typically, seven or eight quadrature points are used.
+As described in Section~\ref{sec:AOLaplaceMP2_trace}, the Coulomb-like term of the MP2 energy can be expressed as a weighted sum over quadrature points, $E_{2} = -\sum_{\alpha}^{\tau} w_{\alpha} e_{2}^{\alpha}$. In Section~\ref{sec:Results}, we employ the quadrature rules developed by Braess and Hackbusch.\cite{braess2005approximation,takatsuka2008minimax} Typically, seven or eight quadrature points are used.
 
 The Coulomb-like term of the MP2 energy can be written explicitly as
 \begin{equation}
   e_{2} = -2 \sum_{\mu,\nu,\lambda,\overline{\sigma},\gamma,\delta,\kappa,\epsilon} (\mu \nu | \lambda \sigma) X_{\mu\gamma} Y_{\nu \delta} (\gamma \delta | \kappa \epsilon) X_{\kappa \lambda} Y_{\epsilon \sigma}.
 \end{equation}
-Using $W$ to denote the ERI tensor $(\mu \nu | \lambda \sigma)$, we can express the equation more compactly as
-\begin{equation}
-  e_{2} = -2 \, \text{Tr}\left(\left(W (X \otimes Y)\right)^2\right),
-\end{equation}
-where $\text{Tr}$ denotes the trace and $\otimes$ denotes the Kronecker product. Defining
-\begin{equation}
-T = W (X \otimes Y),
-\end{equation}
+Using the notations introduced in Section~\ref{sec:AOLaplaceMP2_trace},
 the energy expression simplifies further to
 \begin{equation}
     e_{2} = -2 \, \text{Tr}(T^2).
 \end{equation}
 
-We refer to the operation of multiplying $W$ by $X \otimes Y$ as \emph{index transformation}. Here, $W$ denotes the original ERI tensor, while $T$ denotes the index-transformed ERI tensor. As discussed in Section~\ref{subsec:H2ERI}, the ERI tensor, represented as an $\mathcal{H}^2$-matrix, can be decomposed into a short-range component, $W_s$, which includes diagonal and near-diagonal blocks, and a long-range component, $W_l$, including the remainder of the matrix. Owing to the linearity of matrix-matrix multiplication,
+We refer to the operation of multiplying $W$ by $X \otimes Y$ as \emph{index transformation}. Here, $W$ denotes the original ERI tensor, while $T$ denotes the index-transformed ERI tensor. As discussed in Section~\ref{subsec:hf-h2-eri}, the ERI tensor, represented as an $\mathcal{H}^2$-matrix, can be decomposed into a short-range component, $W_s$, which includes diagonal and near-diagonal blocks, and a long-range component, $W_l$, including the remainder of the matrix. Owing to the linearity of matrix-matrix multiplication,
 \begin{equation}
     T=T_s+T_l
 \end{equation}
@@ -199,7 +314,7 @@ The terms $\text{Tr}(T_{\text{s}}^2)$ and $\text{Tr}(T_{\text{s}} T_{\text{l}})$
 
 For the term $\text{Tr}(T_{\text{l}}^2)$, due to the symmetric block structure of the hierarchical matrix, it is sufficient to select each block and compute the trace of the product of the block with its mirror image across the diagonal.
 
-\subsection{\textcolor{black}{Time and Space Complexity}}
+\subsection{Time and Space Complexity}
 \label{subsec:complexity analysis}
 \textcolor{black}{We analyze costs \emph{per quadrature point}, with the understanding that the number of points $\tau$ is a small constant ($\sim\!7$--$8$) and hence contributes only a constant factor overall. We adopt the following assumptions (standard for insulating finite systems and $\mathcal{H}^2$ compression): (A1) off-diagonal entries of the density and complementary matrices decay exponentially with the distance between basis-function centers;\cite{kohn1995density,kohn1996density} (A2) after thresholding at levels $\eta_s$ and $\eta_l$, the \emph{expected} number of significant entries per row/column of $X$ and $Y$ is $\mathcal{O}(1)$; (A3) the $\mathcal{H}^2$ representation of $W_l$ uses admissible blocks with numerical rank bounded by a geometry-dependent constant $k_{\max}$; (A4) let $m$ be the number of basis-function pairs retained after Schwarz screening ($m \le N^2$), the hierarchical partition over these $m$ pairs has $\mathcal{O}(\log m)$ levels with constant-size leaves; (A5) transfer matrices are well-conditioned so their (pseudo-)inverses are stable and bounded in size; (A6) formation of $X$ and $Y$ is treated as given for the purpose of asymptotic bounds (e.g., produced during or after SCF using standard linear-scaling routines), i.e., it does not dominate the costs reported below.}
 
@@ -236,13 +351,168 @@ Errors from the low-rank approximation and the low-rank index transformation are
 \label{subsec:parallel properties}
 In quantum chemistry, along with physical approximations and efficient numerical methods, parallelization is a key strategy to extend the size and complexity of systems that may be studied.\cite{calvin2021chemrev,bernholdt1996largescale,fletcher1999parallel,hattig2006distributedmemory,ufimtsev2008gpu1,Fales2015,chow2015parallel,werner2015scalable,peng2016tiledarray,kowalski2021nwchemex,hu2024das}  That hierarchical matrices naturally map to massively parallel computer architectures is a significant advantage that will be exploited in future work.  In Laplace transform MP2, the computation of the MP2 energy at each quadrature point is independent, making the algorithm highly parallelizable. Furthermore, each row computation in $T_{\text{s}}$ and each block computation in $T_{\text{l}}$ are also independent, enabling parallelization of the short- and long-range parts of the index transformation, respectively. This same property applies to the MP2 energy computation step. In other words, the Hierarchical SOS-MP2 algorithm could theoretically achieve constant time complexity with an infinite number of processors. However, since parallelization requires considerable memory, we implemented parallelization only for the quadrature points in this proof-of-concept paper. \textcolor{black}{We apply OpenMP with 8 threads on this parallelization because there are usually 7 or 8 number of quadrature points in the Laplace transformation. } Future work will involve parallelizing other parts of the algorithm on massively parallel computers.
 
+\section{Implementation details}
+\label{sec:ImplementationDetails}
+
+\paragraph{Computational setup and test systems.}
+All computations were carried out on the Seawulf cluster at Stony Brook
+University (dg-mem node).  We selected two model systems: (i) linear alkane
+chains as representative one-dimensional systems and (ii) water clusters as
+representative three-dimensional systems.  Unless stated otherwise, all
+SOS-MP2 calculations employed the cc-pVDZ basis set.  For sparsification of
+both the short-range ERI tensor and the short-range index-transformed tensor,
+we used a fixed threshold \(\zeta = 1\times 10^{-6}\).
+The sparsification thresholds for the energy-weighted density matrices \(X\)
+and \(Y\) are allowed to differ between the short- and long-range
+transformations, denoted by \(\eta_s\) and \(\eta_l\), respectively.  Except
+where noted, we used \(\eta_s=10^{-5}\) and \(\eta_l=10^{-4}\) for the alkane
+series, and \(\eta_s=\eta_l=3\times 10^{-4}\) for the water clusters.
+
+\paragraph{Code base and data structures.}
+The entire prototype implementation is written in C for fine-grained control
+over memory layout and traversal over sparse and hierarchical data structures.
+The hierarchical ERI tensor \(W\) is represented using the same \(\mathcal{H}^2\)
+data model as in the existing \textsc{H2P-ERI} infrastructure; however, the
+in-memory representation used by the SOS-MP2 routines is more elaborate than a
+minimal textbook \(\mathcal{H}^2\) format due to (i) symmetry exploitation,
+(ii) mixed indexing conventions required by the index transformations, and
+(iii) the need to efficiently query individual entries during trace
+accumulation.
+
+\paragraph{Pair-index space: basis-function pairs and spatial blocking.}
+We view the ERI tensor as a matrix over \emph{basis-function pairs} (BFPs),
+i.e.,
+\(
+W_{(\mu\nu),(\lambda\sigma)} \equiv (\mu\nu|\lambda\sigma),
+\)
+so each row and column index corresponds to one AO pair.  The row and column
+cluster trees are built by recursively partitioning three-dimensional space
+into axis-aligned boxes; at each level, one box is subdivided into eight child
+boxes (an octree).  Each leaf box contains a set of \emph{screened shell pairs}.  A
+shell pair is assigned to a box according to the geometric midpoint of the two
+shell centers.  If the two shells contain \(M\) and \(N\) basis functions, then
+their shell pair contributes \(MN\) BFPs; consequently, the number of BFPs in a
+box is the total number of basis-function pairs induced by its shell pairs.
+This geometric decomposition defines the hierarchical blocking of \(W\).  The
+row and column trees interact through an admissibility criterion to determine
+which block pairs are stored as near-field (short-range) blocks and which are
+represented in low-rank form, thereby yielding an \(\mathcal{H}^2\) matrix for
+the ERIs.
+
+\paragraph{\(\mathcal{H}^2\) storage: nested bases and block couplings.}
+For an admissible (far-field) block \(B\) coupling a row cluster \(r\) and a
+column cluster \(c\), we store a nested row basis \(U_r\), a nested column
+basis \(U_c\), and a small coupling matrix \(S_{rc}\) (denoted \(B\) in some
+\(\mathcal{H}^2\) literature).  The numerical ranks are small and bounded in
+practice, so \(S_{rc}\in\mathbb{R}^{k_r\times k_c}\) is typically tiny compared
+to the full block.  The block entries are represented as
+\begin{equation}
+W_{rc} \approx U_r \, S_{rc} \, U_c^{\mathsf{T}}.
+\end{equation}
+This representation exploits standard ERI symmetries.  In particular, because
+\((\mu\nu|\lambda\sigma)=(\mu\nu|\sigma\lambda)\), the BFP index \((\lambda\sigma)\)
+can be treated as an \emph{unordered} pair in the stored ERI operator.  This
+reduces storage and construction costs substantially for the base ERI tensor.
+
+\paragraph{Ordered pair indices for index transformation.}
+In the SOS-MP2 contractions, the column (ket) side undergoes index
+transformations with \(X\) and \(Y\).  These transformations are sensitive to
+the ordering of the two functions in a pair index, so an unordered BFP is no
+longer sufficient on the transformed side.  To address this, we introduce an
+\emph{ordered} pair-index representation, which we refer to as a
+basis-function list (BFL): each original BFP \((\lambda\sigma)\) is expanded
+into two ordered variants, \([\lambda,\sigma]\) and \([\sigma,\lambda]\), except
+when both functions belong to the same shell (in which case the distinction is
+unnecessary).  Conceptually, this converts the column index space from BFPs
+(unordered) to BFLs (ordered), enabling correct application of the \(X\) and
+\(Y\) transformations.
+
+\paragraph{Short-range implementation: CSR storage and BFL\(\rightarrow\)BFP compression.}
+For the short-range part \(T_s = W_s (X\otimes Y)\), we store \(W_s\) and
+\(T_s\) in compressed sparse row (CSR) format.  The short-range index
+transformations are applied on a row-by-row basis:
+we first form \((\mu\nu|\underline{\lambda}\epsilon)\) by applying \(X\) and
+sparsify the intermediate with threshold \(\zeta\), then apply \(Y\) to obtain
+\((\mu\nu|\underline{\lambda}\overline{\sigma})\) and sparsify again.
+Internally, the transformed columns are naturally generated in BFL form due to
+ordering; however, we immediately compress the final short-range result back
+to the unordered BFP representation to reduce memory.  Specifically, the two
+ordered variants associated with a single unordered BFP are summed into one
+value.  This compression reduces the storage for \(T_s\) by nearly a factor of
+two while preserving the trace-of-square target:
+computing \(\mathrm{Tr}(T_s^2)\) on the compressed BFP representation is
+equivalent to computing \(\mathrm{Tr}(\tilde{T}_s^2)\) on the corresponding
+expanded BFL representation.  This equivalence allows all subsequent short-range
+energy accumulation to proceed in the compact BFP index space.
+
+\paragraph{Long-range implementation: \(\mathcal{H}^2\rightarrow\) hierarchical conversion and ordered transforms.}
+For the long-range part \(T_l = W_l (X\otimes Y)\), direct right multiplication
+would destroy the nested structure of the column bases in the original
+\(\mathcal{H}^2\) representation.  We therefore convert \(W_l\) into a more
+general hierarchical format before applying the transformations.  Concretely,
+for each admissible block we absorb the coupling matrix into the column basis,
+\begin{equation}
+W_{rc} \approx U_r S_{rc} U_c^{\mathsf{T}}
+\quad\Rightarrow\quad
+W_{rc} \approx U_r \,\widehat{U}_{rc}^{\mathsf{T}},
+\qquad
+\widehat{U}_{rc}^{\mathsf{T}} \equiv S_{rc} U_c^{\mathsf{T}},
+\end{equation}
+so that each block now carries its own (non-nested) effective column factor
+\(\widehat{U}_{rc}\), while blocks in the same block row continue to share the
+same nested row basis \(U_r\).  The index transformations are then applied to
+the block-specific column factors, producing a hierarchical (completely low-rank)
+representation of \(T_l\).  In contrast to the short-range case, we apply the
+\(X\) and \(Y\) transformations as two separate passes for the long-range part,
+as this reduces the overall assembly and traversal cost in the hierarchical
+data structure (see Section~\ref{subsec:Index Transformation of the low rank part}).
+
+\begin{figure}[htbp]
+\centering
+\includegraphics[width=\textwidth,height=0.95\textheight,keepaspectratio]{figures/flowchart.png}
+\caption{Overall workflow of the SOS-MP2 implementation.}
+\label{fig:flowchart}
+\end{figure}
+
+\noindent
+Figure~\ref{fig:flowchart} summarizes the end-to-end dataflow of the
+implementation. Starting from the ERI operator, we separate the short-range and
+long-range contributions and apply the two right-side index transformations
+defined by the energy-weighted density matrices $X$ and $Y$.
+For the short-range path, the transformations are executed in a row-wise manner
+on the CSR representation and the final transformed tensor is compressed back
+to the unordered BFP index space to reduce memory.
+For the long-range path, the $\mathcal{H}^2$ representation is first converted
+to a blockwise low-rank form so that the ordered transforms can be applied to
+block-specific column factors; the resulting $T_l$ is evaluated through
+hierarchical traversals (same-level/ancestor/descendant interactions).
+Finally, the SOS-MP2 Coulomb-like contribution is accumulated as
+$e_2=-2\,\mathrm{Tr}(T_s^2 + T_l^2 + 2T_sT_l)$, where the cross term is obtained
+by iterating over the nonzeros of $T_s$ and querying the corresponding entries
+in the hierarchical representation of $T_l$.
+
+
+\paragraph{Energy accumulation and cross term.}
+With \(T_s\) stored as a CSR matrix over BFP indices and \(T_l\) stored as a
+hierarchical low-rank matrix, we evaluate the Coulomb-like energy contribution
+via
+\(
+e_2 = -2\,\mathrm{Tr}(T_s^2 + T_l^2 + 2T_sT_l).
+\)
+The terms \(\mathrm{Tr}(T_s^2)\) and \(\mathrm{Tr}(2T_sT_l)\) are accumulated by
+iterating over the nonzeros of \(T_s\); for each element of \(T_s\), we query
+the corresponding entry in \(T_l\) (via the hierarchical block lookup) and add
+its contribution.  The term \(\mathrm{Tr}(T_l^2)\) is evaluated blockwise using
+the symmetric structure of the hierarchical matrix: for each low-rank block,
+we multiply it with its mirror block across the diagonal and accumulate the
+trace of the product.
+
+Overall, the implementation is designed to (i) reuse the \textsc{H2P-ERI}
+hierarchical ERI representation, (ii) introduce ordered pair indexing only
+where required by the SOS-MP2 index transformations, and (iii) keep the final short-range transformed tensor in a compact unordered BFP form so that both memory and trace accumulation costs remain low.
+
 \section{Results}
 \label{sec:Results}
-All computations were carried out on the Seawulf cluster %dg-mem node
-at Stony Brook University. We selected two model systems to study: an alkane chain system, which is representative of one-dimensional systems, and a water cluster system, which is representative of fully three-dimensional systems. All SOS-MP2 calculations were performed using the cc-pVDZ basis set. The threshold used for sparsification of both the short-range part of the ERI tensor and the index-transformed ERI tensor was set to $\zeta=1 \times 10^{-6}$.
-
-Different thresholds for sparsification of $X$ and $Y$ are used in the short- and long-range transformations, labeled $\eta_s$ and $\eta_l$, respectively.  Except as noted below, we set the short-range truncation threshold to $\eta_s = 10^{-5}$ for the alkane chain systems and $\eta_s = 3 \times 10^{-4}$ for the water cluster.  For the long-range transformation, thresholds are $\eta_l = 10^{-4}$ for the alkane system and $\eta_l = 3 \times 10^{-4}$ for the water cluster.
-
 \subsection{The Sparsity of Density and Density Complementary Matrices}
 \label{subsec:The sparsity of density and density complementary matrices}
 
@@ -359,8 +629,113 @@ Our experiments across multiple systems and threshold values reveal a sharp drop
 
 While these empirical findings are promising, we currently lack a complete theoretical understanding of the underlying cancellation behavior. It is possible that some deeper symmetry in the structure of the ERI tensor and the $X$ and $Y$ matrices drives this error suppression. We intend to explore this question further, as it may reveal new opportunities for improved performance and accuracy.
 
+\subsection{Terminal C--C bond stretching test on \textit{alkane32}}
+\label{sec:alkane32_stretch}
+
+To probe the stability of the predicted potential energy surface (PES) under small geometric perturbations, we performed a simple terminal bond-stretching scan on \textit{alkane32}. Specifically, the outermost (terminal) carbon atom was displaced along the terminal C--C bond direction by $\delta \in [0.01,\,0.10]~\text{\AA}$ (with an additional reference at $\delta=0$), and single-point correlation energies were evaluated at each stretched geometry. Table~\ref{tab:alkane32_stretch} reports the SOS-MP2 energies together with the H2P predictions (shown with a negative sign for easier comparison), as well as their differences $\Delta E = E_{\mathrm{SOS\text{-}MP2}} - E_{\mathrm{H2P}}$.
+
+\begin{table}[t]
+\centering
+\small
+\renewcommand{\arraystretch}{1.15}
+\setlength{\tabcolsep}{7pt}
+\caption{Correlation energies (Hartree) for \textit{alkane32} under terminal C--C bond stretching. H2P energies are displayed with a negative sign.}
+\label{tab:alkane32_stretch}
+\begin{tabular}{r r r r}
+\toprule
+$\delta$ (\AA) & $E_{\mathrm{SOS\text{-}MP2}}$ (Ha) & $E_{\mathrm{H2P}}$ (Ha) & $\Delta E$ (Ha) \\
+\midrule
+0.00 & -1.163197274 & -1.163344603 & 0.000147329 \\
+0.01 & -1.163264495 & -1.163410874 & 0.000146379 \\
+0.02 & -1.163333769 & -1.163480357 & 0.000146588 \\
+0.03 & -1.163405054 & -1.163550115 & 0.000145061 \\
+0.04 & -1.163478321 & -1.163622854 & 0.000144533 \\
+0.05 & -1.163553544 & -1.163698278 & 0.000144734 \\
+0.06 & -1.163630696 & -1.163772891 & 0.000142195 \\
+0.08 & -1.163790691 & -1.163931823 & 0.000141132 \\
+0.10 & -1.163958131 & -1.164100249 & 0.000142118 \\
+\bottomrule
+\end{tabular}
+
+\vspace{2pt}
+\footnotesize
+$\Delta E = E_{\mathrm{SOS\text{-}MP2}} - E_{\mathrm{H2P}}$.
+Although the absolute offset remains at the $\sim10^{-4}$~Ha level, the residual error in stretch-induced \emph{relative} energies stays around $\sim10^{-6}$~Ha (max $\approx 6.2\times10^{-6}$~Ha), which is advantageous for PES construction where energy differences dominate.
+\end{table}
+
 \section{Attempts on the exchange-like terms}
-This part is planned for future work.
+
+In the previous section we focused on the Coulomb-type contribution. Under the matrix formulation, that term can be interpreted as the trace of a ``matrix square'' (equivalently, a self-contraction of an ERI-derived matrix), which makes the algebraic structure and the computational treatment comparatively direct. In contrast, exchange-like terms involve a different index pairing and therefore do not immediately fit into the same square-trace viewpoint. In this section, we attempt to analyze the exchange integral and outline a decomposition strategy that leads to several tractable subterms. For clarity, the discussion below is written for the first quadrature point; the extension to all quadrature points is straightforward by summation.
+
+We consider the exchange contribution in the form
+\begin{equation}
+e_{2,K}=\sum_{\mu\nu\lambda\sigma}(\mu\nu\mid\lambda\sigma)\,(\mu\sigma\mid\lambda\nu),
+\label{eq:exchange_start}
+\end{equation}
+where the first factor $(\mu\nu\mid\lambda\sigma)$ should be understood as the quadrature-separated (pointwise) Coulomb-like integral at the chosen quadrature point.
+
+As defined previously in~\eqref{eq:Z_def_unified} and the corresponding ERI matrix definition, we continue to use $W$ to denote the unfolded ERI matrix with entries $W_{(\mu\nu),(\lambda\sigma)}=(\mu\nu\mid\lambda\sigma)$, and $Z=X\otimes Y$ to denote the diagonal scaling matrix at the first quadrature point. With these notations, the quadrature-separated factor appearing in~\eqref{eq:exchange_start} is exactly the $(\mu\nu,\lambda\sigma)$-entry of $ZWZ$.
+
+The exchange-like structure comes from the second factor $(\mu\sigma\mid\lambda\nu)$, which pairs indices differently from $W_{(\mu\nu),(\lambda\sigma)}$. To capture this pairing within the same matrix contraction framework, we introduce a cross-transposed ERI matrix $V$ whose entries are defined by the index permutation
+\[
+V_{(\lambda\sigma),(\mu\nu)} := (\mu\sigma\mid\lambda\nu).
+\]
+
+Equivalently, $V$ is obtained from $W$ by the entrywise relabeling
+\[
+(\mu,\nu,\lambda,\sigma)\mapsto(\mu,\sigma,\lambda,\nu),
+\]
+i.e., each entry in $W$ is paired with another entry whose indices are ``cross-transposed'' in the sense above. This cross-transpose pairing is illustrated in Fig.~\ref{fig:crosstranspose_exchange}. In that schematic, we use a small toy index range (e.g.\ $\mu,\nu,\lambda,\sigma\in\{1,\dots,4\}$) to visualize how an entry finds its partner under the map. For instance, the block labeled $A$ corresponds to the element indexed by $(\mu,\nu,\lambda,\sigma)=(1,1,1,2)$, and its paired element under the cross-transpose becomes $(\mu,\sigma,\lambda,\nu)=(1,2,1,1)$, which is labeled as $B$ in the figure. Similarly, the entry labeled $C$ corresponds to $(1,3,2,2)$ and is mapped to $(1,2,2,3)$, labeled as $D$. These examples show explicitly how one can identify the paired indices and thus realize the transformation from $W$ to $V$ at the matrix-entry level.
+
+Then, following the same ``sum-to-trace'' conversion used for the Coulomb square trace in~\eqref{eq:trace_square_unified}, the exchange contribution can be written compactly as
+\[
+e_{2,K}=\mathrm{Tr}(ZWZV).
+\]
+W By cyclicity of the trace, we will also use the equivalent form
+\begin{equation}
+\mathrm{Tr}(Z W Z V)=\mathrm{Tr}(W Z V Z).
+\label{eq:exchange_trace_cyclic}
+\end{equation}
+
+\begin{figure}[htbp]
+\centering
+\includegraphics[width=0.75\textwidth]{figures/12.png}
+\caption{Index pairing for the exchange term and the induced cross-transpose map between $W$ and $V$.}
+\label{fig:crosstranspose_exchange}
+\end{figure}
+
+Assume the ERI matrix admits a decomposition
+\begin{equation}
+W = W_s + W_l,
+\label{eq:W_split}
+\end{equation}
+where $W_s$ contains the screened ``local/near-field'' entries (typically $\mathcal{O}(N^2)$ nonzeros), and $W_l$ contains the complementary far-field part (e.g.\ stored in an $\mathcal{H}^2$ or related hierarchical format). We define $V_d$ and $V_l$ \emph{as the images of $W_s$ and $W_l$ under the same cross-transpose bijection}:
+\begin{equation}
+V_d := \mathcal{T}_\times(W_s),\qquad V_l := \mathcal{T}_\times(W_l).
+\label{eq:V_split_image}
+\end{equation}
+Importantly, $V_d$ here is \emph{not} defined as the ``$d$-part of $V$'' by an independent distance criterion; it is precisely the cross-transpose of $W_s$. Since $\mathcal{T}_\times$ is a bijection on the index set induced by the permutation $(\mu,\nu,\lambda,\sigma)\mapsto(\mu,\sigma,\lambda,\nu)$, it preserves entry counts: $V_d$ and $W_s$ contain the same number of stored entries, and likewise $V_l$ and $W_l$.
+
+Using~\eqref{eq:exchange_trace_cyclic} and~\eqref{eq:V_split_image}, we expand the exchange trace as
+\begin{equation}
+\begin{split}
+\mathrm{Tr}(W Z V Z)
+&= \mathrm{Tr}\bigl((W_s+W_l)\,Z\,(V_d+V_l)\,Z\bigr) \\
+&= \mathrm{Tr}(W_s Z V_d Z)+\mathrm{Tr}(W_l Z V_d Z) \\
+&\quad +\mathrm{Tr}(W_s Z V_l Z)+\mathrm{Tr}(W_l Z V_l Z).
+\end{split}
+\label{eq:exchange_trace_expand}
+\end{equation}
+The first term $\mathrm{Tr}(W_s Z V_d Z)$ is the most straightforward: both $W_s$ and $V_d$ are sparse with $\mathcal{O}(N^2)$ nonzeros and are linked by the cross-transpose map, hence it can be evaluated efficiently through sparse--(diagonal)--sparse contractions. The second term $\mathrm{Tr}(W_l Z V_d Z)$ remains tractable as well because $V_d$ is sparse; one may contract $V_d Z$ first and then apply the hierarchical operator $W_l$ to the resulting object, avoiding any explicit dense far-field assembly.
+
+The third term $\mathrm{Tr}(W_s Z V_l Z)$ can also be evaluated efficiently by exploiting the elementwise correspondence between $V_l$ and $W_l$, together with cyclicity of the trace. Using $\mathrm{Tr}(ABCD)=\mathrm{Tr}(BCDA)$, we write
+\begin{equation}
+\mathrm{Tr}(W_s Z V_l Z)=\mathrm{Tr}(Z W_s Z\,V_l).
+\label{eq:WdVl_trace_cyclic}
+\end{equation}
+This suggests first forming the (still sparse) matrix $A:=Z W_s Z$, which preserves the $\mathcal{O}(N^2)$ sparsity pattern inherited from $W_s$. One then uses the cross-transpose bijection to align the indices of $A$ with those of $V_l$. In practice, it is not necessary to explicitly materialize $V_l$: whenever an entry of $V_l$ is required during the accumulation, it can be obtained by querying the corresponding entry of $W_l$. In this way, $\mathrm{Tr}(W_s Z V_l Z)$ can be evaluated while keeping the far-field object in its hierarchical representation.
+
+The last term $\mathrm{Tr}(W_l Z V_l Z)$ is the most challenging part because it couples two far-field objects. At present, we do not have a generally efficient method for evaluating this term with the same complexity guarantees as the previous ones. A plausible direction is to incorporate Schwarz screening into the cross-transposed index space. Concretely, when the pairing changes from $(\mu\nu)$ to $(\mu\sigma)$ under $\mathcal{T}_\times$, the new pair $(\mu\sigma)$ can correspond to basis functions that are geometrically far apart, leading to integrals that are screened out by Schwarz-type bounds. If one enforces a locality/screening rule after cross-transpose, then the number of retained effective entries in the far-field component $V_l$ may become small, which in turn can make an approximate evaluation of $\mathrm{Tr}(W_l Z V_l Z)$ feasible. We are currently implementing and testing these ideas, focusing first on the first three terms in~\eqref{eq:exchange_trace_expand} and on practical screening rules for controlling the remaining far-field coupling.
 
 \section{Comparison with tensor hyper-contraction}
 \label{sec:ComparisonTHC}

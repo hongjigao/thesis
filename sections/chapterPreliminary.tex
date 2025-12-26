@@ -1,73 +1,185 @@
 \chapter{Preliminaries and Related Work}
 \label{sec:prelim}
-\subsection{Hierarchical matrices}
+\section{Hierarchical matrices}
 \label{subsec:h-matrix}
 
-Hierarchical matrices ($\mathcal{H}$-matrices) are data-sparse representations
-for large, structured matrices arising in applications such as elliptic partial
-differential equations, boundary integral equations, and kernel methods
-\cite{HackbuschBorm2002,Bebendorf2008,Hackbusch2015}. The main idea is to
-exploit the fact that matrix blocks corresponding to well-separated index
-clusters are often numerically low rank, while blocks corresponding to
-near-field interactions are not.
+Hierarchical matrices ($\mathcal{H}$-matrices) provide data-sparse
+representations for large matrices that are dense but structured, e.g.,
+those arising from boundary integral operators and kernel interactions
+\cite{HackbuschBorm2002,Bebendorf2008,Hackbusch2015}. Their mathematical
+backbone is a hierarchical partition of the product index set
+$\mathcal I \times \mathcal I$ induced by two (row/column) cluster trees and a
+recursively constructed block cluster tree. The essential observation is that
+blocks associated with well-separated index clusters can often be approximated
+to high accuracy by low-rank matrices, whereas near-field blocks cannot.
 
-More precisely, one first organizes the index set
-$\mathcal{I} = \{1,\dots,N\}$ into a cluster tree based on geometric or
-algebraic information, and then constructs a block cluster tree that partitions
-the $N\times N$ matrix into blocks. An admissibility condition---typically
-expressing that the underlying index clusters are well separated---is used to
-classify blocks as \emph{far-field} or \emph{near-field}. Near-field blocks are
-stored explicitly as dense matrices, while far-field blocks are compressed by
-low-rank approximations, often obtained by SVD, RRQR, or SRRQR.
+\paragraph{Cluster tree.}
+Let $\mathcal I = \{1,\dots,N\}$. A \emph{cluster tree} $T_{\mathcal I}$ is a
+rooted tree whose vertices (clusters) $t$ are labeled by subsets
+$\hat t \subseteq \mathcal I$ such that $\widehat{\mathrm{root}}(T_{\mathcal I})
+= \mathcal I$ and, whenever $t$ is not a leaf, its children form a disjoint
+partition of $\hat t$:
+\[
+  \hat t = \biguplus_{t' \in \mathrm{children}(t)} \widehat{t'}.
+\]
+Leaves are typically enforced by a stopping rule such as
+$\#\hat t \le n_{\min}$ \cite{Hackbusch2015}.
 
-Under mild assumptions on the underlying problem and the admissibility
-condition, $\mathcal{H}$-matrices achieve almost linear storage and arithmetic
-complexity. For example, for a second-order elliptic operator in three
-dimensions, one can typically store the corresponding stiffness matrix in
-$\mathcal{O}(N \log N)$ memory and apply it to a vector in
-$\mathcal{O}(N \log^2 N)$ time, where $N$ is the number of degrees of freedom
-\cite{Hackbusch2015}. In the language of Section~\ref{subsec:asymptotic}, this
-represents a substantial improvement over the $\Theta(N^2)$ storage and
-$\Theta(N^2)$ matrix-vector multiplication cost of a dense matrix.
+\begin{figure}[t]
+  \centering
+  \includegraphics[width=0.72\linewidth]{figures/1.png}
+  \caption{Example of a cluster tree for $\mathcal I=\{1,\dots,N\}$. Each node
+  is a cluster $t$ labeled by an index subset $\hat t\subseteq\mathcal I$, and
+  the children of a cluster form a disjoint partition of the parent label.}
+  \label{fig:cluster-tree}
+\end{figure}
 
-The hierarchical organization is particularly flexible: blocks can be further
-subdivided, admissibility can be adapted to the problem at hand, and different
-low-rank approximation techniques can be used in different parts of the
-matrix. This flexibility makes $\mathcal{H}$-matrices a natural tool for
-compressing large matrices and tensors in many-body problems.
+\paragraph{Block cluster tree as a \emph{recursive} (restricted) product.}
+Given a row cluster tree $T_{\mathcal I}$ and a column cluster tree
+$T_{\mathcal J}$ (often $\mathcal J=\mathcal I$), a \emph{block cluster tree}
+$T_{\mathcal I \times \mathcal J}$ is a finite tree whose nodes are pairs
+$b=(t,s)$ with $t\in T_{\mathcal I}$ and $s\in T_{\mathcal J}$, labeled by the
+Cartesian product $\hat b = \hat t \times \hat s \subseteq \mathcal I \times
+\mathcal J$, and rooted at $(\mathrm{root}(T_{\mathcal I}),
+\mathrm{root}(T_{\mathcal J}))$ \cite{Hackbusch2015}. The children of a node are
+defined recursively by
+\[
+\mathrm{children}(t,s)=
+\begin{cases}
+\{(t,s') : s'\in \mathrm{children}(s)\}, & \mathrm{children}(t)=\emptyset,\ \mathrm{children}(s)\neq\emptyset,\\
+\{(t',s) : t'\in \mathrm{children}(t)\}, & \mathrm{children}(t)\neq\emptyset,\ \mathrm{children}(s)=\emptyset,\\
+\{(t',s') : (t',s') \in (\mathrm{children}(t),\mathrm{children}(s))\}, & \text{otherwise}.
+\end{cases}
+\]
+Hence, while nodes are always pairs of clusters, the resulting block cluster
+tree should be understood as a \emph{restricted} substructure of the full
+Cartesian product of all pairs: it is generated top-down and stops refining
+whenever a block becomes a leaf, so one does \emph{not} enumerate all possible
+pairs $(t,s)$. The leaves of $T_{\mathcal I\times\mathcal J}$ form a disjoint
+block partition of $\mathcal I\times\mathcal J$ \cite{Hackbusch2015}.
+
+\paragraph{Homogeneity (optional).}
+A block cluster tree is called \emph{homogeneous} if
+$\mathrm{level}(t,s)=\mathrm{level}(t)=\mathrm{level}(s)$ for all nodes $(t,s)$.
+In this case, refinement always occurs on both sides simultaneously. All the hierarchical matrices in this work are based on homogeneous block cluster trees.
+
+\paragraph{Admissibility and admissible block cluster trees.}
+In geometric settings, indices correspond to basis functions with supports
+$\Omega_i$, and a cluster $t$ is associated with
+$\Omega_t:=\bigcup_{i\in \hat t}\Omega_i$. A standard admissibility condition
+is
+\begin{equation}
+  \min\{\mathrm{diam}(\Omega_t),\mathrm{diam}(\Omega_s)\}
+  \le \eta\,\mathrm{dist}(\Omega_t,\Omega_s),
+  \label{eq:h-adm}
+\end{equation}
+where $\eta>0$ is a parameter \cite{Hackbusch2015}. A block cluster tree is
+\emph{admissible} (w.r.t.\ the chosen admissibility condition) if every leaf
+block $(t,s)$ satisfies
+\[
+(t,s)\ \text{is admissible} \quad\text{or}\quad \mathrm{sons}(t)=\emptyset
+\quad\text{or}\quad \mathrm{sons}(s)=\emptyset.
+\]
+Thus, refinement stops either because the block is admissible (far-field) or
+because further subdivision is impossible on at least one side (near-field at
+finest resolution).
+
+\paragraph{$\mathcal H$-matrix representation.}
+Given an admissible block cluster tree, near-field leaves are stored as dense
+submatrices, while admissible (far-field) leaves are approximated by low-rank
+factors, e.g.,
+\[
+A|_{\hat t\times\hat s}\approx U_{t,s}V_{t,s}^\top,
+\]
+constructed by SVD, (S)RRQR, ACA, interpolation, etc. Under standard kernel
+regularity and geometry assumptions, this yields almost linear storage and
+matvec complexity (up to logarithmic factors and rank bounds)
+\cite{Hackbusch2015}.
 
 \subsection{$\mathcal{H}^2$-matrices}
 \label{subsec:h2-matrix}
 
-While $\mathcal{H}$-matrices already reduce storage and computation costs
-significantly, they store separate low-rank bases for different far-field
-blocks, which leads to redundancy. $\mathcal{H}^2$-matrices refine this idea by
-introducing \emph{nested} cluster bases that are shared across blocks
-\cite{BormGrasedyckHackbusch2003,Hackbusch2015}. In an $\mathcal{H}^2$-matrix,
-each cluster in the index tree is associated with a basis that spans the
-relevant far-field interactions, and bases at coarse levels are represented in
-terms of bases at finer levels via small transfer matrices.
+A key limitation of standard $\mathcal H$-matrices is that different admissible
+blocks typically store independent low-rank factors, leading to redundancy.
+$\mathcal H^2$-matrices remove most of this redundancy by introducing
+\emph{cluster bases} that are reused across many blocks, together with a
+\emph{nested} (multilevel) structure along the cluster tree
+\cite{Hackbusch2015}.
 
-This nested structure eliminates much of the redundancy present in standard
-$\mathcal{H}$-matrices. Under suitable assumptions on the kernel or operator,
-$\mathcal{H}^2$-matrices can achieve linear or nearly linear complexity:
+\paragraph{Cluster bases and uniform $\mathcal H$-matrices.}
+Let $T_{\mathcal I}$ and $T_{\mathcal J}$ be the row and column cluster trees.
+A family $V=(V_t)_{t\in T_{\mathcal I}}$ is called a \emph{cluster basis} if
+each $V_t$ has index set $\hat t$ in its rows and a (typically small) auxiliary
+index set $K_t$ in its columns, i.e.,
+\[
+  V_t \in \mathbb{R}^{\hat t \times K_t},
+\]
+and similarly for a column cluster basis $W=(W_s)_{s\in T_{\mathcal J}}$
+\cite{Hackbusch2015}. A \emph{uniform $\mathcal H$-matrix} with row basis $V$
+and column basis $W$ is then defined by requiring that, for every admissible
+leaf block $(t,s)$ in the block cluster tree, there exists a \emph{coupling
+matrix} $S_{t,s}\in\mathbb{R}^{K_t\times K_s}$ such that
 \begin{equation}
-  \mathcal{O}(N) \quad\text{for storage}, \qquad
-  \mathcal{O}(N) \quad\text{for matrix-vector multiplication},
+  A|_{\hat t\times \hat s} = V_t\, S_{t,s}\, W_s^{\top}.
+  \label{eq:uniformH}
 \end{equation}
-again up to logarithmic factors and assuming bounded ranks. From the asymptotic
-viewpoint, this represents an improvement from $\mathcal{O}(N \log N)$ or
-$\mathcal{O}(N \log^2 N)$ to (essentially) $\mathcal{O}(N)$, while maintaining
-a prescribed accuracy in the relevant matrix norm.
+The matrices $S_{t,s}$ are called coupling matrices, and the representation
+\eqref{eq:uniformH} makes explicit that block-specific information is confined
+to small dense factors, while the bases $V_t$ and $W_s$ are shared across many
+blocks \cite{Hackbusch2015}.
 
-$\mathcal{H}^2$-matrices are particularly effective for discretizations of
-translation-invariant or asymptotically smooth kernels, such as Green's
-functions of elliptic operators and Coulomb-like interactions. In later
-chapters we will make use of hierarchical and $\mathcal{H}^2$-matrix ideas to
-compress large matrices and tensors arising in electronic-structure theory,
-and we will analyze their storage, computational complexity, and approximation
-errors using the asymptotic framework introduced in
-Section~\ref{sec:prelim-convergence}.
+\paragraph{Nested cluster bases and transfer matrices.}
+To reach optimal (essentially linear) complexity, the cluster bases are required
+to be \emph{nested}. Concretely, a row cluster basis $V=(V_t)$ is nested if for
+every non-leaf cluster $t$ and every son $t'\in\mathrm{sons}(t)$ there exists a
+transfer matrix $T_{t',t}\in\mathbb{R}^{K_{t'}\times K_t}$ such that, for all
+$y_t\in\mathbb{R}^{K_t}$ and all indices $i\in\hat t'$,
+\begin{equation}
+  (V_t y_t)_i = (V_{t'}\, T_{t',t}\, y_t)_i.
+  \label{eq:h2-transfer}
+\end{equation}
+Equivalently, in the common binary case $\mathrm{sons}(t)=\{t_1,t_2\}$, one may
+write the basis in block form
+\[
+  V_t =
+  \begin{pmatrix}
+    V_{t_1} T_{t_1,t}\\
+    V_{t_2} T_{t_2,t}
+  \end{pmatrix},
+\]
+and analogously for the column basis $W$ \cite{Hackbusch2015}.
+An $\mathcal H^2$-matrix is, by definition, a uniform $\mathcal H$-matrix whose
+row and column cluster bases are nested \cite{Hackbusch2015}.
+
+\paragraph{Fast matrix--vector multiplication (structure).}
+The uniform representation \eqref{eq:uniformH} admits a natural four-phase
+matrix--vector multiplication:
+\begin{enumerate}
+\item \emph{Forward transformation:} compute compressed coefficients
+  $x_s := W_s^{\top} x|_{\hat s}$ for all clusters $s$;
+\item \emph{Multiplication on coupling matrices:} for each cluster $t$, compute
+  $y_t := \sum_{s\in R_t} S_{t,s}\, x_s$, where $R_t$ denotes the set of clusters
+  interacting with $t$ through admissible leaves;
+\item \emph{Backward transformation:} accumulate $y$ from the cluster
+  coefficients via the row bases $V_t$;
+\item \emph{Non-admissible (near-field) leaves:} treat dense near-field blocks
+  as in standard $\mathcal H$-matrices.
+\end{enumerate}
+With constant-order bases (bounded $\#K_t$) and standard sparsity assumptions on
+the block structure, the multiplication phase is linear in the number of
+clusters up to a factor depending on $k:=\max_t \#K_t$ \cite{Hackbusch2015}.
+Nestedness is crucial because it allows the forward/backward transformations to
+be implemented by propagating coefficients through transfer matrices, replacing
+many expensive multiplications by $V_t$ with cheaper $k\times k$ updates
+\cite{Hackbusch2015}.
+
+Under suitable assumptions (e.g., asymptotically smooth kernels at fixed
+accuracy so that the basis order remains bounded), $\mathcal H^2$-matrices
+achieve essentially linear complexity for storage and matrix--vector
+multiplication (up to logarithmic factors in depth and problem-dependent
+constants) \cite{Hackbusch2015}. In later chapters we will exploit these ideas
+to compress matrices and tensors arising in electronic-structure theory and
+analyze their complexity and approximation errors.
 
 \section{Quantum Chemistry Background}
 \label{sec:prelim-chem}
@@ -141,8 +253,8 @@ and low-rank tensor approximations.
 \subsection{Electron repulsion integral tensor}
 \label{subsec:eri-tensor}
 
-Let $\{\varphi_\mu\}_{\mu=1}^{N_\mathrm{bas}}$ denote a set of spatial basis
-functions (typically Gaussian-type orbitals). The two-electron Coulomb
+Let $\{\varphi_\mu\}_{\mu=1}^{N}$ denote a set of spatial basis
+functions (typically Gaussian-type orbitals) where $N$ is the number of basis functions. The two-electron Coulomb
 interaction in this basis is encoded by the electron repulsion integral (ERI)
 tensor
 \begin{equation}
@@ -154,9 +266,9 @@ tensor
   \varphi_\lambda(\mathbf{r}_2)\varphi_\sigma(\mathbf{r}_2)
   \, d\mathbf{r}_1\,d\mathbf{r}_2.
 \end{equation}
-Here $\mu,\nu,\lambda,\sigma \in \{1,\dots,N_\mathrm{bas}\}$ index basis
+Here $\mu,\nu,\lambda,\sigma \in \{1,\dots,N\}$ index basis
 functions. The ERI tensor is a rank-4 object with
-$\Theta(N_\mathrm{bas}^4)$ elements, and it possesses several permutation
+$\Theta(N^4)$ elements, and it possesses several permutation
 symmetries, such as
 \begin{equation}
   (\mu\nu|\lambda\sigma)
@@ -166,13 +278,13 @@ symmetries, such as
 \end{equation}
 By grouping pairs of indices into compound indices, e.g.\ $(\mu\nu)$ and
 $(\lambda\sigma)$, one can reshape the ERI tensor into a
-$N_\mathrm{bas}^2\times N_\mathrm{bas}^2$ matrix, which is convenient for
+$N^2\times N^2$ matrix, which is convenient for
 numerical linear algebra operations and for applying low-rank and hierarchical
 approximations.
 
 The ERI tensor plays a central role in Hartree--Fock, post-HF correlation
 methods, and density functional theory. Direct storage of all ERIs scales as
-$\Theta(N_\mathrm{bas}^4)$, and the naive computation of all integrals has a
+$\Theta(N^4)$, and the naive computation of all integrals has a
 similar or worse cost, depending on the integral algorithm
 \cite{Boys1950,HeadGordonPople1988}. This motivates a wide range of integral
 screening and compression techniques, including density fitting (resolution of
@@ -218,8 +330,8 @@ problem until self-consistency is reached (self-consistent field, SCF).
 The computational bottleneck of conventional HF lies in the construction of the
 Coulomb and exchange contributions to the Fock matrix. Without any screening or
 compression, the number of significant ERIs scales as
-$\Theta(N_\mathrm{bas}^4)$, and each SCF iteration has a formal cost of
-$\mathcal{O}(N_\mathrm{bas}^4)$ or higher, where $N_\mathrm{bas}$ is the number
+$\Theta(N^4)$, and each SCF iteration has a formal cost of
+$\mathcal{O}(N^4)$ or higher, where $N$ is the number
 of basis functions \cite{SzaboOstlund1989,HelgakerJorgensenOlsen2000}. Various
 techniques have been developed to reduce this cost, including integral
 prescreening, density fitting (resolution of the identity)
@@ -230,8 +342,8 @@ electrons in insulators \cite{Yang1991,Goedecker1999}. Many of these techniques
 are compatible with low-rank and hierarchical representations of the ERI tensor,
 which further reduce the asymptotic complexity of HF calculations.
 
-\subsubsection{Hierarchical block low-rank and $\mathcal{H}^2$-based ERI representations}
-\label{subsubsec:hf-h2-eri}
+\subsection{Hierarchical block low-rank and $\mathcal{H}^2$-based ERI representations}
+\label{subsec:hf-h2-eri}
 
 A more recent line of work by Xing, Huang, and Chow combines the Hartree--Fock
 framework with hierarchical block low-rank and $\mathcal{H}^2$-matrix
@@ -268,8 +380,8 @@ Within the HF context, the hierarchical block low-rank ERI representation
 enables the Coulomb and exchange contributions to the Fock matrix to be
 constructed using only matrix-vector and small dense-matrix operations with the
 compressed ERI representation. As a result, the asymptotic cost of building the
-Fock matrix can be reduced from $\Theta(N_\mathrm{bas}^4)$ to nearly linear in
-$N_\mathrm{bas}$ for large three-dimensional systems, while controlling the
+Fock matrix can be reduced from $\Theta(N^4)$ to nearly linear in
+$N$ for large three-dimensional systems, while controlling the
 approximation error through the ranks and tolerance parameters in the
 hierarchical compression \cite{xing2020}. From the perspective of this work,
 these results illustrate how hierarchical and $\mathcal{H}^2$-based low-rank
@@ -277,6 +389,31 @@ representations of the ERI tensor can substantially improve the asymptotic
 behavior of mean-field electronic-structure calculations, and they provide an
 important point of comparison for the tensor and hierarchical approaches
 developed later in this paper.
+
+\paragraph{Proxy point method (h2pack).}
+To construct a stable low-rank approximation for interactions between a target
+box $I_\ast$ and a source box set $J_\ast$, the proxy point method separates
+near- and far-field contributions and replaces the far-field by interactions
+with a small set of \emph{proxy charges} placed on an enclosing surface. The low-rank factors are then computed from
+randomized sketches of the near-field and proxy interactions via an
+interpolative decomposition (ID), yielding an approximation of the form
+$(I_\ast\mid J_\ast)\approx U\,(I_\ast^{\mathrm{id}}\mid J_\ast)$.
+
+
+\begin{algorithm}[t]
+  \caption{Proxy point method for ERI tensor (\texttt{h2pack})}
+  \label{alg:proxy-point}
+  \begin{algorithmic}[1]
+    \Require $I_\ast,\,J_\ast$ (box partitions / index sets)
+    \Ensure $U$ and $I_\ast^{\mathrm{id}}$ such that $(I_\ast\mid J_\ast)\approx U\,(I_\ast^{\mathrm{id}}\mid J_\ast)$
+    \State Split $J_\ast$ into $J_{\mathrm{near}}$ and $J_{\mathrm{far}}$
+    \State Select proxy point charges $Y_p$ on an enclosing surface around $I_\ast$
+    \State Draw random matrices $\Omega_1\in\mathbb{R}^{|J_{\mathrm{near}}|\times |I_\ast|}$ and $\Omega_2\in\mathbb{R}^{|Y_p|\times |I_\ast|}$
+    \State Form sketches $A_1=(I_\ast\mid J_{\mathrm{near}})\Omega_1$ and $A_2=(I_\ast\mid Y_p)\Omega_2$
+    \State Normalize columns of $A_1$ and $A_2$ to obtain $\tilde A_1$ and $\tilde A_2$
+    \State Compute $U$ and $I_\ast^{\mathrm{id}}$ by applying an ID to $[\tilde A_1,\tilde A_2]$
+  \end{algorithmic}
+\end{algorithm}
 
 \subsection{Second-order M{\o}ller--Plesset perturbation theory (MP2)}
 \label{subsec:mp2}
@@ -299,11 +436,11 @@ the MO basis:
 \end{equation}
 
 A straightforward evaluation of $E_\mathrm{MP2}$ scales as
-$\mathcal{O}(N_\mathrm{occ}^2 N_\mathrm{vir}^2 N_\mathrm{bas})$ in floating
+$\mathcal{O}(N_\mathrm{occ}^2 N_\mathrm{vir}^2 N)$ in floating
 point operations and requires $\Theta(N_\mathrm{occ} N_\mathrm{vir}
-N_\mathrm{bas}^2)$ storage if all relevant ERIs are precomputed, where
+N^2)$ storage if all relevant ERIs are precomputed, where
 $N_\mathrm{occ}$ and $N_\mathrm{vir}$ are the numbers of occupied and virtual
-MOs, respectively, and $N_\mathrm{bas}$ is the number of basis functions. In
+MOs, respectively, and $N$ is the number of basis functions. In
 terms of a single size parameter $N$ representing system or basis size, the
 overall scaling is typically described as $\mathcal{O}(N^5)$ in time and
 $\mathcal{O}(N^4)$ in memory \cite{SzaboOstlund1989,HelgakerJorgensenOlsen2000}.
